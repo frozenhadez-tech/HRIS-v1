@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Payroll Register · HRPayroll L98{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{{ ab.bar(back_url=url_for('dashboard', mode=mode, company=company),
+          exit_url=url_for('dashboard', mode=mode, company=company)) }}
+{% endblock %}
+
+{% block content %}
+
+<div class="screen-head">
+  <h1>Payroll Register</h1>
+  <p class="crumb">Period register grouped by pay item · {{ comp_map.get(company, '') }}</p>
+</div>
+
+<section class="panel">
+  <form class="filters" method="get">
+    <input type="hidden" name="mode" value="{{ mode }}">
+    <input type="hidden" name="company" value="{{ company }}">
+    <select name="year">
+      {% for y in periods | map(attribute='payyear') | unique %}
+      <option value="{{ y }}" {{ 'selected' if year == y }}>{{ y }}</option>
+      {% endfor %}
+    </select>
+    <select name="month">
+      {% for m in range(1, 13) %}<option value="{{ m }}" {{ 'selected' if month == m }}>{{ '%02d' % m }}</option>{% endfor %}
+    </select>
+    <select name="period">
+      <option value="1" {{ 'selected' if period == '1' }}>Period 1</option>
+      <option value="2" {{ 'selected' if period == '2' }}>Period 2</option>
+      <option value="X" {{ 'selected' if period == 'X' }}>Period X</option>
+    </select>
+    <button type="submit">Open register</button>
+  </form>
+
+  <div class="register-meta">
+    <span><strong>{{ totals.emps }}</strong> employees paid</span><span class="rule"></span>
+    <span><strong>{{ items | length }}</strong> pay items</span>
+  </div>
+
+  <table class="ledger wide">
+    <thead><tr><th>Item</th><th>Description</th><th>Cat</th><th class="num">Employees</th><th class="num">Hours</th><th class="num">Days</th><th class="num">Amount (₱)</th></tr></thead>
+    <tbody>
+    {% for r in items %}
+      <tr><td class="mono">{{ r.payitem }}</td><td>{{ r.descrip }}</td><td class="center mono dim">{{ r.category if r.category is not none else '' }}</td>
+      <td class="num">{{ r.emps }}</td><td class="num">{{ '{:,.1f}'.format(r.hrs) if r.hrs else '' }}</td>
+      <td class="num">{{ '{:,.1f}'.format(r.dys) if r.dys else '' }}</td><td class="num strong">{{ r.amt | peso }}</td></tr>
+    {% else %}
+      <tr><td colspan="7" class="empty">No transactions for this period / company.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="note">Amounts shown exactly as stored by the legacy system; deductions are negative per the original pay-item setup.</p>
+</section>
+
+{% endblock %}

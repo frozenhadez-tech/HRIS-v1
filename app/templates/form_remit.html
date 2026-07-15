@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ f.title }} · HRPayroll L98{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{{ ab.bar(back_url=url_for('dashboard', mode=mode, company=company), exit_url=url_for('dashboard', mode=mode, company=company)) }}
+{% endblock %}
+
+{% block content %}
+<div class="screen-head no-print">
+  <h1>{{ f.title }}</h1>
+  <p class="crumb">Computed from the engine for {{ comp.nm }}</p>
+  <button class="print-btn" onclick="window.print()">Print</button>
+</div>
+
+<div class="paper">
+  <div class="form-head">
+    <div class="form-co">{{ comp.nm }}</div>
+    <div class="form-title">{{ f.title }}</div>
+    <div class="form-meta">
+      {% if kind=='sss' %}Employer SSS No.: <b>{{ comp.sssno or '—' }}</b>{% endif %}
+      {% if kind=='philhealth' %}Employer PhilHealth No.: <b>{{ comp.phidno or '—' }}</b>{% endif %}
+      {% if kind=='hdmf' %}Employer Pag-IBIG No.: <b>{{ comp.hdmfno or '—' }}</b>{% endif %}
+      · TIN {{ comp.tin or '—' }}
+    </div>
+  </div>
+
+  <table class="ledger wide form-tbl">
+    <thead>
+      <tr><th>#</th><th>Employee</th>{% for label, key in f.cols %}<th class="num">{{ label }}</th>{% endfor %}</tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td class="mono">{{ loop.index }}</td>
+        <td>{{ r.empname }}</td>
+        {% for label, key in f.cols %}
+          {% if key == 'gno' %}<td class="mono">{{ r.gno or '—' }}</td>
+          {% else %}<td class="num">{{ r[key] | peso }}</td>{% endif %}
+        {% endfor %}
+      </tr>
+    {% else %}
+      <tr><td colspan="{{ f.cols|length + 2 }}" class="empty">No members with a number on file.</td></tr>
+    {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr class="grand"><td></td><td class="strong">TOTAL — {{ rows|length }} members</td>
+      {% for label, key in f.cols %}
+        {% if key == 'gno' %}<td></td>{% else %}<td class="num strong">{{ tot[key] | peso }}</td>{% endif %}
+      {% endfor %}
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="form-cert">
+    <div class="sig"><span></span>Prepared By</div>
+    <div class="sig"><span></span>Authorized Signature</div>
+  </div>
+  <p class="note no-print">Contributions computed by the rebuilt engine. SSS uses the loaded <code>ssstable</code>
+  (update to the current schedule for 2025 accuracy); PhilHealth 2.5%×2, Pag-IBIG capped ₱200 EE/ER.</p>
+</div>
+{% endblock %}

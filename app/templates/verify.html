@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Verify Engine · HRPayroll L98{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{{ ab.bar(back_url=url_for('dashboard', mode=mode, company=company), exit_url=url_for('dashboard', mode=mode, company=company)) }}
+{% endblock %}
+
+{% block content %}
+<div class="screen-head">
+  <h1>Engine Verification</h1>
+  <p class="crumb">Recompute a closed period and compare to what the original app stored</p>
+</div>
+
+<section class="panel">
+  <form class="filters" method="get">
+    <input type="hidden" name="mode" value="{{ mode }}">
+    <input type="hidden" name="company" value="{{ company }}">
+    <select name="year">{% for y in periods | map(attribute='payyear') | unique %}<option value="{{ y }}" {{ 'selected' if year==y }}>{{ y }}</option>{% endfor %}</select>
+    <select name="month">{% for m in range(1,13) %}<option value="{{ m }}" {{ 'selected' if month==m }}>{{ '%02d' % m }}</option>{% endfor %}</select>
+    <select name="period"><option value="1" {{ 'selected' if period=='1' }}>Period 1</option><option value="2" {{ 'selected' if period=='2' }}>Period 2</option><option value="X" {{ 'selected' if period=='X' }}>Period X</option></select>
+    <button type="submit">Verify</button>
+  </form>
+
+  <div class="register-meta"><span><strong>{{ rep.employees }}</strong> employees in {{ year }}-{{ '%02d' % month }} period {{ period }}</span></div>
+
+  <div class="scorecards">
+    {% for name, s in rep.summary.items() %}
+    <div class="scorecard {{ 'good' if s.rate is not none and s.rate >= 95 else ('mid' if s.rate is not none and s.rate >= 70 else ('bad' if s.rate is not none else 'na')) }}">
+      <span class="sc-name">{{ name }}</span>
+      {% if s.rate is not none %}
+        <span class="sc-rate">{{ '%.0f' % s.rate }}%</span>
+        <span class="sc-sub">{{ s.match }} / {{ s.n }} match</span>
+      {% else %}
+        <span class="sc-rate">—</span><span class="sc-sub">not deducted this period</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if rep.mismatches %}
+  <h2>Divergences ({{ rep.mismatches | length }})</h2>
+  <table class="ledger wide">
+    <thead><tr><th>Emp No</th><th class="num">Salary</th><th>Item</th><th class="num">Stored</th><th class="num">Engine</th><th class="num">Δ</th></tr></thead>
+    <tbody>
+    {% for m in rep.mismatches %}
+      {% for item, d in m.mismatch.items() %}
+      <tr><td class="mono">{{ m.emp_id }}</td><td class="num">{{ m.salary | peso }}</td><td>{{ item }}</td>
+      <td class="num">{{ d.stored | peso }}</td><td class="num">{{ d.computed | peso }}</td>
+      <td class="num strong">{{ (d.computed - d.stored) | peso }}</td></tr>
+      {% endfor %}
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="note">No divergences — the engine reproduced every deduction for this period.</p>
+  {% endif %}
+
+  <p class="note">Withholding tax uses the stored per-period taxable (item 901), so it is period-accurate and
+  typically matches 100%. SSS divergences in 2025 reflect the <strong>stale SSS table</strong> in the backup
+  (max MSC ₱20k) versus the Jan-2025 schedule (MSC to ₱35k) — the engine is correct; the loaded table needs updating.</p>
+</section>
+{% endblock %}

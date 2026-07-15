@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · HRPayroll L98{% endblock %}
+{% block content %}
+
+<div class="screen-head">
+  <h1>Company Dashboard</h1>
+  <p class="crumb">{{ 'HR Application' if mode == 'HR' else 'Payroll Application' }} — overview of the restored database</p>
+</div>
+
+<section class="tiles">
+  <div class="tile accent">
+    <span class="tile-label">Employees on record</span>
+    <span class="tile-value">{{ by_status | sum(attribute='cnt') }}</span>
+    <span class="tile-foot">{{ active_total }} currently employed</span>
+  </div>
+  <div class="tile">
+    <span class="tile-label">Payroll history</span>
+    <span class="tile-value">{{ '{:,}'.format(ph.rows) }}</span>
+    <span class="tile-foot">lines · {{ ph.miny }}–{{ ph.maxy }}</span>
+  </div>
+  <div class="tile">
+    <span class="tile-label">Timecard entries</span>
+    <span class="tile-value">{{ '{:,}'.format(counters.timecard) }}</span>
+    <span class="tile-foot">{{ '{:,}'.format(counters.leavetran) }} leave records</span>
+  </div>
+  <div class="tile">
+    <span class="tile-label">Tables restored</span>
+    <span class="tile-value">{{ counters.tables }}</span>
+    <span class="tile-foot">{{ '{:,}'.format(counters.ratechange) }} rate changes</span>
+  </div>
+</section>
+
+<div class="cols">
+  <section class="panel">
+    <h2>Headcount by status</h2>
+    <table class="ledger">
+      <thead><tr><th>Status</th><th class="num">Employees</th></tr></thead>
+      <tbody>
+      {% for r in by_status %}
+        <tr><td><span class="chip {{ r.empsts | tone }}">{{ r.empsts | est }}</span></td><td class="num">{{ r.cnt }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  <section class="panel">
+    <h2>Companies</h2>
+    <table class="ledger">
+      <thead><tr><th>Code</th><th>Company</th><th class="num">Active</th><th class="num">Total</th></tr></thead>
+      <tbody>
+      {% for r in by_company %}
+        <tr><td class="mono">{{ r.company }}</td><td>{{ comp_map.get(r.company, r.company) }}</td>
+        <td class="num">{{ r.active }}</td><td class="num">{{ r.cnt }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<section class="panel">
+  <h2>Latest payroll periods</h2>
+  <table class="ledger">
+    <thead><tr><th>Year</th><th>Month</th><th>Period</th><th class="num">Lines</th><th class="num">Employees</th><th></th></tr></thead>
+    <tbody>
+    {% for r in periods %}
+      <tr><td class="mono">{{ r.payyear }}</td><td class="mono">{{ '%02d' % r.paymonth }}</td><td class="mono">{{ r.payperiod }}</td>
+      <td class="num">{{ '{:,}'.format(r.lines) }}</td><td class="num">{{ r.emps }}</td>
+      <td class="row-act"><a href="{{ url_for('payroll', year=r.payyear, month=r.paymonth, period=r.payperiod, mode=mode, company=company) }}">open register →</a></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% endblock %}

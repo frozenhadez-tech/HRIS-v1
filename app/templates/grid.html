@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · HRPayroll L98{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{{ ab.bar(back_url=url_for('dashboard', mode=mode, company=company),
+          exit_url=url_for('dashboard', mode=mode, company=company)) }}
+{% endblock %}
+
+{% block content %}
+
+<div class="screen-head">
+  <h1>{{ title }}</h1>
+  <p class="crumb">{% if subtitle %}{{ subtitle }} · {% endif %}{{ comp_map.get(company, '') }}</p>
+</div>
+
+<section class="panel">
+  <table class="ledger wide">
+    <thead>
+      <tr>{% for f, label, a in g.cols %}<th class="{{ 'num' if a in ('n','i') }}">{{ label }}</th>{% endfor %}</tr>
+    </thead>
+    <tbody>
+    {% for row in rows %}
+      <tr>
+        {% for f, label, a in g.cols %}
+          {% if a == 'n' %}<td class="num">{{ row[f] | peso }}</td>
+          {% elif a == 'i' %}<td class="num">{{ row[f] | intf }}</td>
+          {% elif a == 'd' %}<td class="mono">{{ row[f] | dt }}</td>
+          {% elif a == 'm' %}<td class="mono">{{ row[f] }}</td>
+          {% elif a == 'c' %}<td class="center mono">{{ row[f] }}</td>
+          {% else %}<td>{{ row[f] }}</td>{% endif %}
+        {% endfor %}
+      </tr>
+    {% else %}
+      <tr><td colspan="{{ g.cols | length }}" class="empty">No records.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="note">{{ rows | length }} row{{ 's' if rows | length != 1 }}{{ ' (capped)' if rows | length >= 300 }} · source table shown in subtitle.</p>
+</section>
+
+{% endblock %}

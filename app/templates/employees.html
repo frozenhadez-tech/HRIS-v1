@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Employee Data · HRPayroll L98{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{{ ab.bar(back_url=url_for('dashboard', mode=mode, company=company),
+          exit_url=url_for('dashboard', mode=mode, company=company)) }}
+{% endblock %}
+
+{% block content %}
+
+<div class="screen-head">
+  <h1>Employee Data</h1>
+  <p class="crumb">201 file registry — select an employee to open their record sections</p>
+</div>
+
+<section class="panel">
+  <form class="filters" method="get">
+    <input type="hidden" name="mode" value="{{ mode }}">
+    <input type="search" name="q" value="{{ qs }}" placeholder="Position to — name or employee no.…" autofocus>
+    <select name="status">
+      <option value="active" {{ 'selected' if status == 'active' }}>Currently employed</option>
+      <option value="all" {{ 'selected' if status == 'all' }}>Include resigned</option>
+      {% for s in statuses %}
+      <option value="{{ s.code }}" {{ 'selected' if status == s.code }}>{{ s.code | est }} ({{ s.cnt }})</option>
+      {% endfor %}
+    </select>
+    <select name="company">
+      <option value="">All companies</option>
+      {% for c in companies %}
+      <option value="{{ c.company }}" {{ 'selected' if company == c.company }}>{{ c.company }} — {{ c.companynam }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Filter</button>
+  </form>
+
+  <table class="ledger wide">
+    <thead>
+      <tr><th>No.</th><th>Employee Name</th><th>Co</th><th>Division / Dept / Section</th><th>Position</th><th>Status</th><th>Date hired</th></tr>
+    </thead>
+    <tbody>
+    {% for e in emps %}
+      <tr class="rowlink" onclick="location='{{ url_for('employee', company=e.company, emp_id=e.emp_id, mode=mode) }}'">
+        <td class="mono">{{ e.emp_id }}</td>
+        <td class="strong"><a href="{{ url_for('employee', company=e.company, emp_id=e.emp_id, mode=mode) }}">{{ e.lastname }}, {{ e.firstname }} {{ e.middlename }}</a></td>
+        <td class="mono">{{ e.company }}</td>
+        <td class="dim">{{ [e.division, e.dept, e.section] | select | join(' / ') or '—' }}</td>
+        <td>{{ e.job or '—' }}</td>
+        <td><span class="chip {{ e.empsts | tone }}">{{ e.empsts | est }}</span></td>
+        <td class="mono">{{ e.datehired | dt }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty">No employees match this filter.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="note">{{ emps | length }} shown{{ ' (capped at 500)' if emps | length == 500 }}.</p>
+</section>
+
+{% endblock %}

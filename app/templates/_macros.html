@@ -1,0 +1,21 @@
+{% macro cell(row, f, a) -%}
+  {%- if a=='n' -%}<td class="num">{{ row[f] | peso }}</td>
+  {%- elif a=='i' -%}<td class="num">{{ row[f] | intf }}</td>
+  {%- elif a=='d' -%}<td class="mono">{{ row[f] | dt }}</td>
+  {%- elif a=='m' -%}<td class="mono">{{ row[f] }}</td>
+  {%- elif a=='c' -%}<td class="center mono">{{ row[f] }}</td>
+  {%- else -%}<td>{{ row[f] }}</td>{%- endif -%}
+{%- endmacro %}
+
+{% macro simple_table(rows, cols) %}
+<table class="ledger wide">
+  <thead><tr>{% for f,l,a in cols %}<th class="{{ 'num' if a in ('n','i') }}">{{ l }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for row in rows %}
+    <tr>{% for f,l,a in cols %}{{ cell(row, f, a) }}{% endfor %}</tr>
+  {% else %}
+    <tr><td colspan="{{ cols|length }}" class="empty">No records on file.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}

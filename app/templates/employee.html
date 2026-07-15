@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}{{ p.lastname }}, {{ p.firstname }} · 201 File{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{% set cur = (tabs | selectattr('0', 'equalto', tab) | map(attribute='1') | first) or 'Personal Info' %}
+{{ ab.bar(back_url=url_for('employees', mode=mode, company=company),
+          exit_url=url_for('dashboard', mode=mode, company=company),
+          section=cur, sections=tabs, emp=p) }}
+{% endblock %}
+
+{% block content %}
+{% import "_macros.html" as ui with context %}
+
+<section class="panel emp-head">
+  <div class="avatar">{{ p.firstname[:1] }}{{ p.lastname[:1] }}</div>
+  <div class="emp-id-block">
+    <h1>{{ p.lastname }}, {{ p.firstname }} {{ p.middlename }}</h1>
+    <p class="dim"><span class="mono">{{ p.emp_id }}</span> · {{ comp_map.get(p.company, p.company) }} · <span class="chip {{ p.empsts | tone }}">{{ p.empsts | est }}</span></p>
+  </div>
+  <div class="emp-head-dates">
+    <div><span class="lbl">Hired</span><span class="mono">{{ p.datehired | dt }}</span></div>
+    <div><span class="lbl">Regularized</span><span class="mono">{{ p.datereg | dt }}</span></div>
+    {% if p.dateresgnd %}<div><span class="lbl">Separated</span><span class="mono">{{ p.dateresgnd | dt }}</span></div>{% endif %}
+  </div>
+</section>
+
+<nav class="tabbar">
+  {% for key, label in tabs %}
+  <a class="tab {{ 'on' if tab == key }}" href="{{ url_for('employee', company=p.company, emp_id=p.emp_id, mode=mode, tab=key) }}">{{ label }}</a>
+  {% endfor %}
+</nav>
+
+<section class="panel tabpanel">
+{% if tab == 'personal' %}
+  <div class="cols">
+    <div>
+      <h2>Personal</h2>
+      <dl class="leader">
+        <div><dt>Birth date</dt><dd>{{ p.birthdate | dt }}{{ ' · age ' ~ p.age if p.age }}</dd></div>
+        <div><dt>Birth place</dt><dd>{{ p.birthplace or '—' }}</dd></div>
+        <div><dt>Sex</dt><dd>{{ p.sex or '—' }}</dd></div>
+        <div><dt>Civil status</dt><dd>{{ p.civilsts or '—' }}</dd></div>
+        <div><dt>Nationality</dt><dd>{{ p.nationality or '—' }}</dd></div>
+        <div><dt>Religion</dt><dd>{{ p.religion or '—' }}</dd></div>
+        <div><dt>Blood type</dt><dd>{{ p.bloodtype or '—' }}</dd></div>
+        <div><dt>Address</dt><dd>{{ [p.address, p.barangay, p.addrcity, p.addrprov] | select | join(', ') or '—' }}</dd></div>
+        <div><dt>Zip</dt><dd class="mono">{{ p.zipcode or '—' }}</dd></div>
+        <div><dt>Phone / Cell</dt><dd class="mono">{{ p.telno or '—' }} / {{ p.cellphone or '—' }}</dd></div>
+      </dl>
+    </div>
+    <div>
+      <h2>Government numbers</h2>
+      <dl class="leader">
+        <div><dt>SSS</dt><dd class="mono">{{ p.sssno or '—' }}</dd></div>
+        <div><dt>TIN</dt><dd class="mono">{{ p.tin or '—' }}</dd></div>
+        <div><dt>PhilHealth</dt><dd class="mono">{{ p.phealthno or '—' }}</dd></div>
+        <div><dt>Pag-IBIG</dt><dd class="mono">{{ p.hdmfno or '—' }}</dd></div>
+      </dl>
+      <h2>Emergency contact</h2>
+      <dl class="leader">
+        <div><dt>Name</dt><dd>{{ p.contactper or '—' }}</dd></div>
+        <div><dt>Relationship</dt><dd>{{ p.contactrel or '—' }}</dd></div>
+        <div><dt>Phone</dt><dd class="mono">{{ p.contacttel or '—' }}</dd></div>
+      </dl>
+      {% if d.pay %}
+      <h2>Compensation</h2>
+      <dl class="leader">
+        <div><dt>Salary rate</dt><dd class="mono strong">₱ {{ d.pay.salary | peso }} <span class="dim">/ {{ {'D':'day','M':'month'}.get(d.pay.paytype, d.pay.paytype) }}</span></dd></div>
+        <div><dt>Pay group</dt><dd class="mono">{{ d.pay.paygroup or '—' }}</dd></div>
+      </dl>
+      {% endif %}
+    </div>
+  </div>
+
+{% elif tab == 'employment' %}
+  <h2>Current assignment</h2>
+  <dl class="leader wide2">
+    <div><dt>Position</dt><dd>{{ job.descrip if job else p.jobcode or '—' }}</dd></div>
+    <div><dt>Division / Dept / Section</dt><dd class="mono">{{ [p.division, p.dept, p.section] | select | join(' / ') or '—' }}</dd></div>
+    <div><dt>Reports to</dt><dd class="mono">{{ p.reports_to or '—' }}</dd></div>
+    <div><dt>Shift</dt><dd>{{ p.shift or '—' }}</dd></div>
+  </dl>
+  <h2>Rate changes</h2>
+  {{ ui.simple_table(d.movements.rate, [('effdate','Effective','d'),('oldrate','Old','n'),('newrate','New','n'),('op','Old Type','c'),('np','New Type','c'),('reason','Reason','')]) }}
+  <h2>Job / position changes</h2>
+  {{ ui.simple_table(d.movements.job, [('effdate','Effective','d'),('oj','Old','m'),('nj','New','m'),('promo','Promo','c'),('reason','Reason','')]) }}
+  <h2>Department changes</h2>
+  {{ ui.simple_table(d.movements.dept, [('effdate','Effective','d'),('od','Old Dept','m'),('nd','New Dept','m'),('reason','Reason','')]) }}
+  <h2>Status changes</h2>
+  {{ ui.simple_table(d.movements.empsts, [('effdate','Effective','d'),('oe','Old','c'),('ne','New','c'),('reason','Reason','')]) }}
+
+{% elif tab == 'education' %}
+  {{ ui.simple_table(d.rows, [('instdesc','School / Institution',''),('coursedesc','Course',''),('lvl','Level','c'),('fromdate','From','d'),('todate','To','d')]) }}
+{% elif tab == 'training' %}
+  {{ ui.simple_table(d.rows, [('coursedesc','Training',''),('instdesc','Provider',''),('fromdate','From','d'),('todate','To','d'),('tlhours','Hours','n')]) }}
+{% elif tab == 'workexp' %}
+  {{ ui.simple_table(d.rows, [('prevcompnm','Previous Employer',''),('workexpdsc','Position',''),('fromdate','From','d'),('todate','To','d')]) }}
+{% elif tab == 'dependents' %}
+  {{ ui.simple_table(d.rows, [('name','Name',''),('relcde','Relation','c'),('sex','Sex','c'),('birtdate','Birth date','d')]) }}
+{% elif tab == 'leaves' %}
+  <h2>Leave balances</h2>
+  {{ ui.simple_table(d.balances, [('lvcode','Leave','m'),('tyent','Entitled','n'),('dayern','Earned','n'),('dayuse','Used','n'),('bal','Balance','n')]) }}
+  <h2>Leave transactions</h2>
+  {{ ui.simple_table(d.trans, [('descrip','Type',''),('frdate','From','d'),('todate','To','d'),('reason','Reason','')]) }}
+{% elif tab == 'medical' %}
+  {{ ui.simple_table(d.rows, [('chkdate','Date','d'),('chktype','Type',''),('findings','Findings',''),('illtype','Illness',''),('follow_up_date','Follow-up','d')]) }}
+{% elif tab == 'appraisal' %}
+  {{ ui.simple_table(d.rows, [('apdate','Date','d'),('aprating','Rating','n'),('apprby','Appraiser','m'),('remarks','Remarks','')]) }}
+{% elif tab == 'disciplinary' %}
+  {{ ui.simple_table(d.rows, [('discpdate','Date','d'),('violation','Violation',''),('penalty','Penalty',''),('remarks','Remarks','')]) }}
+{% elif tab == 'doc' %}
+  {{ ui.simple_table(d.rows, [('docdate','Date','d'),('docname','Document',''),('ext','Type','c'),('remarks','Remarks','')]) }}
+{% elif tab == 'payroll' %}
+  <p style="margin:0 0 14px"><a class="back" href="{{ url_for('payslip', company=p.company, emp_id=p.emp_id, mode=mode) }}">🧾 View / print payslip →</a></p>
+  {% if d.pay %}
+  <h2>Payroll setup</h2>
+  <dl class="leader wide2">
+    <div><dt>Salary rate</dt><dd class="mono strong">₱ {{ d.pay.salary | peso }} / {{ {'D':'day','M':'month'}.get(d.pay.paytype, d.pay.paytype) }}</dd></div>
+    <div><dt>Pay group</dt><dd class="mono">{{ d.pay.paygroup or '—' }}</dd></div>
+    <div><dt>Pay mode</dt><dd class="mono">{{ d.pay.paymode or '—' }}</dd></div>
+    <div><dt>Bank</dt><dd class="mono">{{ d.pay.bankcode }} {{ d.pay.bankacct }}</dd></div>
+    <div><dt>OT eligible</dt><dd class="mono">{{ d.pay.ot or '—' }}</dd></div>
+  </dl>
+  {% endif %}
+  <h2>Loans</h2>
+  {{ ui.simple_table(d.loans, [('descrip','Loan',''),('refno','Ref','m'),('loanamt','Amount','n'),('payded','Per Pay','n'),('no_paid','Paid','n'),('no_of_pay','Terms','n'),('bal','Balance','n')]) }}
+{% elif tab == 'fixallow' %}
+  {{ ui.simple_table(d.rows, [('payitem','Item','m'),('descrip','Allowance',''),('amount','Amount','n'),('freq','Freq','c'),('paytype','Type','c'),('effdate','Effective','d')]) }}
+{% elif tab == 'fixded' %}
+  {{ ui.simple_table(d.rows, [('payitem','Item','m'),('descrip','Deduction',''),('amount','Amount','n'),('freq','Freq','c'),('b4tax','B4Tax','c')]) }}
+{% endif %}
+</section>
+
+{% endblock %}

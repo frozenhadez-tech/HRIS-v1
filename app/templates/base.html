@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}HRPayroll L98{% endblock %}</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>&#128188;</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,900&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="mode-{{ mode }}">
+
+{% set active_menu = HR_MENU if mode == 'HR' else PAYROLL_MENU %}
+<header class="titlebar">
+  <div class="tb-left">
+    <span class="tb-app">{{ comp_map.get(company, 'HRPayroll') }}</span>
+    <span class="tb-mode">{{ 'HR Application' if mode == 'HR' else 'Payroll Application' }}</span>
+  </div>
+  <div class="tb-right">
+    <span class="tb-user">User: <strong>{{ session.get('user', {}).get('id', '—') }}</strong>
+      <a href="{{ url_for('logout') }}">Sign out</a></span>
+    <span class="tb-sep">·</span>
+    <span>HRPayroll_L98</span>
+    <span class="tb-sep">·</span>
+    <span>Build #18 · web rebuild</span>
+  </div>
+</header>
+
+<nav class="menubar">
+  {% for top, items in active_menu %}
+  <div class="menu">
+    <button class="menu-top">{{ top }}</button>
+    <div class="menu-drop">
+      {% for label, target in items %}
+        {% if label == '—' %}
+          <div class="menu-sep"></div>
+        {% elif target.startswith('mode:') %}
+          <a class="menu-item switch" href="?mode={{ target[5:] }}&company={{ company }}">{{ label }}</a>
+        {% elif target.startswith('e:') %}
+          <a class="menu-item" href="{{ url_for(target[2:]) }}?mode={{ mode }}&company={{ company }}">{{ label }}</a>
+        {% elif target.startswith('s:') %}
+          <a class="menu-item" href="{{ url_for('screen', key=target[2:]) }}?mode={{ mode }}&company={{ company }}">{{ label }}</a>
+        {% elif target.startswith('f:') %}
+          <a class="menu-item" href="{{ url_for('forms', kind=target[2:]) }}?mode={{ mode }}&company={{ company }}">{{ label }}</a>
+        {% else %}
+          <span class="menu-item disabled">{{ label }}<em>soon</em></span>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+  <form class="company-pick" method="get">
+    <input type="hidden" name="mode" value="{{ mode }}">
+    <select name="company" onchange="this.form.submit()">
+      {% for c in companies %}
+      <option value="{{ c.company }}" {{ 'selected' if company == c.company }}>{{ c.company }} · {{ c.companynam }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</nav>
+
+{% block actionbar %}{% endblock %}
+
+<main>
+{% block content %}{% endblock %}
+</main>
+
+<div id="toast" class="toast" hidden></div>
+<script>
+(function () {
+  var ab = document.querySelector('.actionbar');
+  function go(sel) {
+    if (!ab) return;
+    var url = ab.dataset[sel];
+    if (url) { location.href = url; } else if (sel === 'back') { history.back(); }
+  }
+  function toast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg; t.hidden = false; t.classList.add('show');
+    clearTimeout(window.__tt); window.__tt = setTimeout(function () { t.classList.remove('show'); }, 2600);
+  }
+  window.__abToast = toast;
+  if (ab) {
+    ab.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-act]'); if (!b) return;
+      var act = b.dataset.act;
+      if (act === 'close') go('back');
+      else if (act === 'exit') go('exit');
+      else if (act === 'refresh') location.reload();
+      else if (act === 'add') toast('Read-only build — Add is enabled in the write-screens phase.');
+      else if (act === 'delete') toast('Read-only build — Delete is enabled in the write-screens phase.');
+    });
+  }
+  document.addEventListener('keydown', function (e) {
+    var typing = /^(INPUT|SELECT|TEXTAREA)$/.test((e.target.tagName || ''));
+    if (!ab) return;
+    if (e.key === 'F12') { e.preventDefault(); go('back'); }
+    else if (e.key === 'F3') { e.preventDefault(); go('exit'); }
+    else if (e.key === 'F6' && !typing) { e.preventDefault(); toast('Read-only build — Add is enabled in the write-screens phase.'); }
+    // F5 keeps its native browser refresh (matches F5-Refresh)
+  });
+})();
+</script>
+
+<footer>
+  <span>MS HR-Payroll · web rebuild of the PowerBuilder original</span>
+  <span>Data as of 28 Aug 2025 backup · read-only</span>
+</footer>
+</body>
+</html>

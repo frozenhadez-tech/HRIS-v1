@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · HRPayroll L98</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>&#128274;</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,900&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="login-body">
+<div class="login-card">
+  <div class="login-brand">
+    <div class="brand-mark">L98</div>
+    <div>
+      <h1>HRPayroll <span>Registry</span></h1>
+      <p>HR &amp; Payroll System · sign in to continue</p>
+    </div>
+  </div>
+
+  {% if error %}<div class="login-error">{{ error }}</div>{% endif %}
+
+  <form method="post" class="login-form" autocomplete="off">
+    <label>User ID
+      <input type="text" name="user_id" autofocus required placeholder="e.g. RARA" spellcheck="false">
+    </label>
+    <label>Password
+      <input type="password" name="password" required placeholder="Password (case-sensitive)">
+    </label>
+    <button type="submit">Sign in</button>
+  </form>
+
+  <p class="login-foot">Authorized personnel only. Access is logged.</p>
+</div>
+</body>
+</html>

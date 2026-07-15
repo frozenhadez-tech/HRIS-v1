@@ -1,0 +1,23 @@
+# secrets & local env
+.env
+app/.env
+*.env.local
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# vercel / build
+.vercel/
+
+# logs & temp
+*.log
+scratchpad/
+
+# the raw SQL Server backup is huge and lives outside the repo; never commit dumps
+*.bak
+*.mdf
+*.ldf

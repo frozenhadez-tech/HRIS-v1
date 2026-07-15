@@ -1,0 +1,525 @@
+"""HRPayroll L98 — web rebuild of the original PowerBuilder HRIS.
+
+Faithful two-mode application (Payroll + HR) over the restored HRPayroll_L98
+database (localhost\\SQLEXPRESS). Read-only: every query is a parameterized SELECT.
+Structure mirrors APP_BLUEPRINT.md.
+"""
+from __future__ import annotations
+
+import datetime
+import os
+from functools import wraps
+from flask import (Flask, abort, redirect, render_template, request, session, url_for)
+
+from db import q, one
+import auth
+
+app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "dev-only-change-me")
+
+
+def login_required(view):
+    @wraps(view)
+    def wrapped(*a, **kw):
+        if not session.get("user"):
+            return redirect(url_for("login", next=request.full_path))
+        return view(*a, **kw)
+    return wrapped
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        uid = (request.form.get("user_id") or "").strip().upper()
+        pwd = request.form.get("password") or ""
+        u = auth.verify(uid, pwd)
+        if u:
+            session["user"] = {"id": u["user_id"], "name": u["user_name"]}
+            dest = request.args.get("next") or url_for("dashboard")
+            return redirect(dest)
+        error = "Invalid user ID or password."
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+@app.before_request
+def guard():
+    if request.endpoint in ("login", "static") or request.path.startswith("/static"):
+        return
+    if not session.get("user"):
+        return redirect(url_for("login", next=request.full_path))
+
+
+# ─────────────────────────────────────────────────────────── lookups / filters
+
+LOOKUPS: dict = {}
+
+
+def load_lookups() -> None:
+    LOOKUPS["companies"] = q(
+        "SELECT company, RTRIM(companynam) AS companynam, RTRIM(COALESCE(shortname,'')) AS shortname "
+        "FROM company ORDER BY company"
+    )
+    LOOKUPS["comp"] = {c["company"]: c["companynam"] for c in LOOKUPS["companies"]}
+    LOOKUPS["est"] = {
+        (r["fldcode"] or "").strip(): (r["descrip"] or "").strip()
+        for r in q("SELECT fldcode, descrip FROM tablecode1 WHERE tblcode='EST'")
+    }
+
+
+STATUS_TONE = {"R": "ok", "P": "warn", "X": "off", "C": "warn", "F": "warn", "U": "warn"}
+
+
+@app.template_filter("peso")
+def peso(v):
+    if v is None:
+        return ""
+    try:
+        return f"{float(v):,.2f}"
+    except (TypeError, ValueError):
+        return str(v)
+
+
+@app.template_filter("dt")
+def dt(v):
+    if v in (None, ""):
+        return ""
+    if isinstance(v, (datetime.date, datetime.datetime)):
+        return v.strftime("%d %b %Y")
+    return str(v)
+
+
+@app.template_filter("intf")
+def intf(v):
+    if v is None or v == "":
+        return ""
+    try:
+        return f"{int(v):,}"
+    except (TypeError, ValueError):
+        return str(v)
+
+
+@app.template_filter("est")
+def est(v):
+    v = (v or "").strip()
+    return LOOKUPS["est"].get(v, v or "—")
+
+
+@app.template_filter("tone")
+def tone(v):
+    return STATUS_TONE.get((v or "").strip(), "warn")
+
+
+def sel_company():
+    c = (request.args.get("company") or "001").strip()
+    if c not in LOOKUPS["comp"]:
+        c = "001"
+    return c
+
+
+@app.context_processor
+def inject():
+    from menus import PAYROLL_MENU, HR_MENU
+    mode = request.args.get("mode", "PY")
+    return {
+        "companies": LOOKUPS["companies"], "comp_map": LOOKUPS["comp"],
+        "PAYROLL_MENU": PAYROLL_MENU, "HR_MENU": HR_MENU,
+        "mode": mode, "company": sel_company(),
+    }
+
+
+# ──────────────────────────────────────────────────────────────────── grids
+
+from grids import GRIDS  # noqa: E402
+
+
+@app.route("/s/<key>")
+def screen(key):
+    g = GRIDS.get(key)
+    if not g:
+        abort(404)
+    company = sel_company()
+    params = [company] if g.get("company") else []
+    rows = q(g["sql"], *params)
+    return render_template(
+        "grid.html", g=g, rows=rows, key=key,
+        title=g["title"], subtitle=g.get("subtitle", ""),
+    )
+
+
+# ─────────────────────────────────────────────────────────────── dashboard
+
+@app.route("/")
+def dashboard():
+    by_status = q(
+        "SELECT RTRIM(empsts) AS empsts, COUNT(*) AS cnt FROM personnel GROUP BY empsts ORDER BY COUNT(*) DESC"
+    )
+    active_total = sum(r["cnt"] for r in by_status if r["empsts"] != "X")
+    by_company = q(
+        "SELECT company, COUNT(*) AS cnt, SUM(CASE WHEN empsts<>'X' THEN 1 ELSE 0 END) AS active "
+        "FROM personnel GROUP BY company ORDER BY company"
+    )
+    ph = one(
+        "SELECT MIN(payyear) AS miny, MAX(payyear) AS maxy, COUNT(*) AS rows, "
+        "COUNT(DISTINCT emp_id) AS emps FROM paytranh"
+    )
+    periods = q(
+        "SELECT TOP 8 payyear, paymonth, payperiod, COUNT(*) AS lines, COUNT(DISTINCT emp_id) AS emps "
+        "FROM paytranh GROUP BY payyear, paymonth, payperiod "
+        "ORDER BY payyear DESC, paymonth DESC, payperiod DESC"
+    )
+    counters = one(
+        "SELECT (SELECT COUNT(*) FROM timecard) AS timecard, (SELECT COUNT(*) FROM loans) AS loans, "
+        "(SELECT COUNT(*) FROM leavetran) AS leavetran, (SELECT COUNT(*) FROM ratechange) AS ratechange, "
+        "(SELECT COUNT(*) FROM users) AS users, "
+        "(SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public') AS tables"
+    )
+    return render_template(
+        "dashboard.html", by_status=by_status, active_total=active_total,
+        by_company=by_company, ph=ph, periods=periods, counters=counters,
+    )
+
+
+# ─────────────────────────────────────────────────────────────── employees
+
+@app.route("/employees")
+def employees():
+    qs = (request.args.get("q") or "").strip()
+    status = request.args.get("status", "active")
+    company = (request.args.get("company") or "").strip()
+
+    where, params = [], []
+    if status == "active":
+        where.append("p.empsts <> 'X'")
+    elif status and status != "all":
+        where.append("p.empsts = ?")
+        params.append(status)
+    if company:
+        where.append("p.company = ?")
+        params.append(company)
+    if qs:
+        where.append("(p.lastname ILIKE ? OR p.firstname ILIKE ? OR p.emp_id ILIKE ?)")
+        like = f"%{qs}%"
+        params += [like, like, qs + "%"]
+
+    sql = (
+        "SELECT TOP 500 p.company, RTRIM(p.emp_id) AS emp_id, RTRIM(p.firstname) AS firstname, "
+        "RTRIM(COALESCE(p.middlename,'')) AS middlename, RTRIM(p.lastname) AS lastname, "
+        "RTRIM(COALESCE(p.division,'')) AS division, RTRIM(COALESCE(p.dept,'')) AS dept, "
+        "RTRIM(COALESCE(p.section,'')) AS section, RTRIM(COALESCE(j.descrip, p.jobcode, '')) AS job, "
+        "RTRIM(p.empsts) AS empsts, p.datehired "
+        "FROM personnel p "
+        "LEFT JOIN jobcode j ON j.company = p.company AND j.code = p.jobcode "
+        + ("WHERE " + " AND ".join(where) if where else "")
+        + " ORDER BY p.lastname, p.firstname"
+    )
+    emps = q(sql, *params)
+    statuses = q(
+        "SELECT RTRIM(empsts) AS code, COUNT(*) AS cnt FROM personnel GROUP BY empsts ORDER BY COUNT(*) DESC"
+    )
+    return render_template("employees.html", emps=emps, qs=qs, status=status,
+                           company=company, statuses=statuses)
+
+
+EMP_TABS = [
+    ("personal", "Personal Info"), ("employment", "Employment"), ("education", "Education"),
+    ("training", "Training"), ("workexp", "Work Exp"), ("dependents", "Dependents"),
+    ("leaves", "Leaves"), ("medical", "Medical Hist"), ("appraisal", "Appraisal"),
+    ("disciplinary", "Disciplinary"), ("doc", "Documents"), ("payroll", "Payroll"),
+    ("fixallow", "Fix Allow"), ("fixded", "Fix Ded'n"),
+]
+
+
+@app.route("/employee/<company>/<emp_id>")
+def employee(company, emp_id):
+    p = one(
+        "SELECT company, RTRIM(emp_id) AS emp_id, RTRIM(firstname) AS firstname, "
+        "RTRIM(COALESCE(middlename,'')) AS middlename, RTRIM(lastname) AS lastname, "
+        "RTRIM(COALESCE(address,'')) AS address, RTRIM(COALESCE(addrcity,'')) AS addrcity, "
+        "RTRIM(COALESCE(addrprov,'')) AS addrprov, RTRIM(COALESCE(barangay,'')) AS barangay, "
+        "birthdate, RTRIM(COALESCE(birthplace,'')) AS birthplace, RTRIM(COALESCE(sex,'')) AS sex, "
+        "RTRIM(COALESCE(civilsts,'')) AS civilsts, RTRIM(COALESCE(nationality,'')) AS nationality, "
+        "RTRIM(COALESCE(religion,'')) AS religion, RTRIM(COALESCE(bloodtype,'')) AS bloodtype, "
+        "RTRIM(COALESCE(telno,'')) AS telno, RTRIM(COALESCE(cellphone,'')) AS cellphone, "
+        "age, RTRIM(COALESCE(zipcode,'')) AS zipcode, "
+        "RTRIM(COALESCE(sssno,'')) AS sssno, RTRIM(COALESCE(tin,'')) AS tin, "
+        "RTRIM(COALESCE(phealthno,'')) AS phealthno, RTRIM(COALESCE(hdmfno,'')) AS hdmfno, "
+        "RTRIM(COALESCE(division,'')) AS division, RTRIM(COALESCE(dept,'')) AS dept, "
+        "RTRIM(COALESCE(section,'')) AS section, RTRIM(COALESCE(jobcode,'')) AS jobcode, "
+        "RTRIM(COALESCE(jobgrade,'')) AS jobgrade, RTRIM(empsts) AS empsts, "
+        "datehired, datereg, dateresgnd, RTRIM(COALESCE(reasonresg,'')) AS reasonresg, "
+        "RTRIM(COALESCE(reports_to,'')) AS reports_to, RTRIM(COALESCE(shift,'')) AS shift, "
+        "RTRIM(COALESCE(contactper,'')) AS contactper, RTRIM(COALESCE(contactrel,'')) AS contactrel, "
+        "RTRIM(COALESCE(contactadd,'')) AS contactadd, RTRIM(COALESCE(contacttel,'')) AS contacttel "
+        "FROM personnel WHERE company = ? AND emp_id = ?", company, emp_id,
+    )
+    if not p:
+        abort(404)
+    tab = request.args.get("tab", "personal")
+    data = load_emp_tab(tab, company, emp_id, p)
+    job = one("SELECT RTRIM(descrip) AS descrip FROM jobcode WHERE company=? AND code=?",
+              company, p["jobcode"])
+    return render_template("employee.html", p=p, job=job, tab=tab, tabs=EMP_TABS, d=data)
+
+
+def load_emp_tab(tab, co, emp, p):
+    if tab == "employment":
+        return {
+            "movements": {
+                "rate": q("SELECT TOP 20 effdate, oldrate, newrate, RTRIM(COALESCE(oldpaytype,'')) AS op, "
+                          "RTRIM(COALESCE(newpaytype,'')) AS np, RTRIM(COALESCE(reason,'')) AS reason "
+                          "FROM ratechange WHERE company=? AND emp_id=? ORDER BY effdate DESC", co, emp),
+                "dept": q("SELECT TOP 20 effdate, RTRIM(COALESCE(olddiv,'')) AS od, RTRIM(COALESCE(olddept,'')) AS odp, "
+                          "RTRIM(COALESCE(oldsect,'')) AS os, RTRIM(COALESCE(newdiv,'')) AS nd, "
+                          "RTRIM(COALESCE(newdept,'')) AS ndp, RTRIM(COALESCE(newsect,'')) AS ns, "
+                          "RTRIM(COALESCE(reason,'')) AS reason FROM deptchange "
+                          "WHERE company=? AND emp_id=? ORDER BY effdate DESC", co, emp),
+                "job": q("SELECT TOP 20 effdate, RTRIM(COALESCE(oldjobcode,'')) AS oj, RTRIM(COALESCE(newjobcode,'')) AS nj, "
+                         "RTRIM(COALESCE(promotion,'')) AS promotion, RTRIM(COALESCE(reason,'')) AS reason "
+                         "FROM jobchange WHERE company=? AND emp_id=? ORDER BY effdate DESC", co, emp),
+                "empsts": q("SELECT TOP 20 effdate, RTRIM(COALESCE(oldempsts,'')) AS oe, RTRIM(COALESCE(newempsts,'')) AS ne, "
+                            "RTRIM(COALESCE(reason,'')) AS reason FROM empstschg "
+                            "WHERE company=? AND emp_id=? ORDER BY effdate DESC", co, emp),
+            }
+        }
+    if tab == "education":
+        return {"rows": q("SELECT RTRIM(COALESCE(instdesc,'')) AS instdesc, RTRIM(COALESCE(coursedesc,'')) AS coursedesc, "
+                          "fromdate, todate, RTRIM(COALESCE(edu_level,'')) AS lvl FROM edutrain "
+                          "WHERE company=? AND emp_id=? ORDER BY fromdate", co, emp)}
+    if tab == "training":
+        return {"rows": q("SELECT RTRIM(COALESCE(coursedesc,'')) AS coursedesc, RTRIM(COALESCE(instdesc,'')) AS instdesc, "
+                          "fromdate, todate, tlhours FROM training WHERE company=? AND emp_id=? ORDER BY fromdate DESC", co, emp)}
+    if tab == "workexp":
+        return {"rows": q("SELECT RTRIM(COALESCE(prevcompnm,'')) AS prevcompnm, RTRIM(COALESCE(workexpdsc,'')) AS workexpdsc, "
+                          "fromdate, todate FROM workexp WHERE company=? AND emp_id=? ORDER BY fromdate DESC", co, emp)}
+    if tab == "dependents":
+        return {"rows": q("SELECT RTRIM(COALESCE(name,'')) AS name, RTRIM(COALESCE(relcde,'')) AS relcde, "
+                          "birtdate, RTRIM(COALESCE(sex,'')) AS sex FROM dependents WHERE company=? AND emp_id=? ORDER BY seqno", co, emp)}
+    if tab == "leaves":
+        return {
+            "balances": q("SELECT RTRIM(lvcode) AS lvcode, tyent, dayern, dayuse, (tyent+dayern-dayuse) AS bal "
+                          "FROM leaves WHERE company=? AND emp_id=? ORDER BY lvcode", co, emp),
+            "trans": q("SELECT TOP 30 RTRIM(COALESCE(l.payitem,'')) AS payitem, RTRIM(COALESCE(i.descrip,'')) AS descrip, "
+                       "l.frdate, l.todate, RTRIM(COALESCE(l.reason,'')) AS reason FROM leavetran l "
+                       "LEFT JOIN payitem i ON i.company=l.company AND i.payitem=l.payitem "
+                       "WHERE l.company=? AND l.emp_id=? ORDER BY l.frdate DESC", co, emp),
+        }
+    if tab == "medical":
+        return {"rows": q("SELECT chkdate, RTRIM(COALESCE(chktype,'')) AS chktype, RTRIM(COALESCE(findings,'')) AS findings, "
+                          "RTRIM(COALESCE(illtype,'')) AS illtype, RTRIM(COALESCE(medication,'')) AS medication, "
+                          "follow_up_date FROM medical WHERE company=? AND emp_id=? ORDER BY chkdate DESC", co, emp)}
+    if tab == "appraisal":
+        return {"rows": q("SELECT apdate, aprating, RTRIM(COALESCE(apprby,'')) AS apprby, RTRIM(COALESCE(remarks,'')) AS remarks "
+                          "FROM appraisal WHERE company=? AND emp_id=? ORDER BY apdate DESC", co, emp)}
+    if tab == "disciplinary":
+        return {"rows": q("SELECT discpdate, RTRIM(COALESCE(violation,'')) AS violation, RTRIM(COALESCE(penalty,'')) AS penalty, "
+                          "frdate, todate, RTRIM(COALESCE(remarks,'')) AS remarks FROM discipline "
+                          "WHERE company=? AND emp_id=? ORDER BY discpdate DESC", co, emp)}
+    if tab == "doc":
+        return {"rows": q("SELECT docdate, RTRIM(COALESCE(docname,'')) AS docname, RTRIM(COALESCE(docimgext,'')) AS ext, "
+                          "RTRIM(COALESCE(remarks,'')) AS remarks FROM edoc WHERE company=? AND emp_id=? ORDER BY docdate DESC", co, emp)}
+    if tab == "payroll":
+        return {
+            "pay": one("SELECT salary, RTRIM(COALESCE(paytype,'')) AS paytype, RTRIM(COALESCE(paygroup,'')) AS paygroup, "
+                       "RTRIM(COALESCE(paymode,'')) AS paymode, RTRIM(COALESCE(bankcode,'')) AS bankcode, "
+                       "RTRIM(COALESCE(bankacct,'')) AS bankacct, mintakepay, RTRIM(COALESCE(oteligible,'')) AS ot "
+                       "FROM payroll WHERE company=? AND emp_id=?", co, emp),
+            "loans": q("SELECT RTRIM(COALESCE(l.payitem,'')) AS payitem, RTRIM(COALESCE(i.descrip,'')) AS descrip, "
+                       "RTRIM(COALESCE(l.refno,'')) AS refno, l.loanamt, l.payded, l.no_of_pay, l.no_paid, "
+                       "l.totalpaid, (l.loanamt - l.totalpaid) AS bal FROM loans l "
+                       "LEFT JOIN payitem i ON i.company=l.company AND i.payitem=l.payitem "
+                       "WHERE l.company=? AND l.emp_id=? ORDER BY l.dateapprov DESC", co, emp),
+        }
+    if tab == "fixallow":
+        return {"rows": q("SELECT RTRIM(COALESCE(f.payitem,'')) AS payitem, RTRIM(COALESCE(i.descrip,'')) AS descrip, "
+                          "f.amount, RTRIM(COALESCE(f.freq,'')) AS freq, RTRIM(COALESCE(f.paytype,'')) AS paytype, f.effdate "
+                          "FROM fixallow f LEFT JOIN payitem i ON i.company=f.company AND i.payitem=f.payitem "
+                          "WHERE f.company=? AND f.emp_id=? ORDER BY f.payitem", co, emp)}
+    if tab == "fixded":
+        return {"rows": q("SELECT RTRIM(COALESCE(f.payitem,'')) AS payitem, RTRIM(COALESCE(i.descrip,'')) AS descrip, "
+                          "f.amount, RTRIM(COALESCE(f.freq,'')) AS freq, RTRIM(COALESCE(f.b4tax,'')) AS b4tax "
+                          "FROM fixded f LEFT JOIN payitem i ON i.company=f.company AND i.payitem=f.payitem "
+                          "WHERE f.company=? AND f.emp_id=? ORDER BY f.payitem", co, emp)}
+    # personal (default) — payroll summary strip
+    return {
+        "pay": one("SELECT salary, RTRIM(COALESCE(paytype,'')) AS paytype, RTRIM(COALESCE(paygroup,'')) AS paygroup "
+                   "FROM payroll WHERE company=? AND emp_id=?", co, emp),
+        "years": q("SELECT payyear, COUNT(*) AS lines FROM paytranh WHERE company=? AND emp_id=? "
+                   "GROUP BY payyear ORDER BY payyear DESC", co, emp),
+    }
+
+
+# ───────────────────────────────────────────────────────── payroll register
+
+@app.route("/payroll")
+def payroll():
+    periods = q("SELECT DISTINCT TOP 40 payyear, paymonth, payperiod FROM paytranh "
+                "ORDER BY payyear DESC, paymonth DESC, payperiod DESC")
+    if not periods:
+        abort(404)
+    d0 = periods[0]
+    year = request.args.get("year", type=int) or d0["payyear"]
+    month = request.args.get("month", type=int) or d0["paymonth"]
+    period = (request.args.get("period") or d0["payperiod"]).strip()
+    company = sel_company()
+    items = q(
+        "SELECT t.payitem, RTRIM(COALESCE(MAX(i.descrip), t.payitem)) AS descrip, MAX(i.category) AS category, "
+        "COUNT(DISTINCT t.emp_id) AS emps, SUM(t.trhours) AS hrs, SUM(t.trdays) AS dys, SUM(t.tramount) AS amt "
+        "FROM paytranh t LEFT JOIN payitem i ON i.company=t.company AND i.payitem=t.payitem "
+        "WHERE t.payyear=? AND t.paymonth=? AND t.payperiod=? AND t.company=? "
+        "GROUP BY t.payitem ORDER BY t.payitem", year, month, period, company)
+    totals = {
+        "emps": one("SELECT COUNT(DISTINCT emp_id) AS n FROM paytranh WHERE payyear=? AND paymonth=? "
+                    "AND payperiod=? AND company=?", year, month, period, company)["n"],
+        "amt": sum(r["amt"] or 0 for r in items),
+    }
+    return render_template("payroll.html", periods=periods, items=items, totals=totals,
+                           year=year, month=month, period=period)
+
+
+# ────────────────────────────────────────────────── payroll engine screens
+
+import payroll_engine as pe  # noqa: E402
+
+
+@app.route("/calculator")
+def calculator():
+    salary = request.args.get("salary", type=float)
+    result = pe.engine().compute_monthly(salary) if salary else None
+    return render_template("calculator.html", salary=salary, r=result)
+
+
+@app.route("/engine/verify")
+def engine_verify():
+    company = sel_company()
+    periods = q("SELECT DISTINCT TOP 30 payyear, paymonth, payperiod FROM paytranh "
+                "WHERE company=? ORDER BY payyear DESC, paymonth DESC, payperiod DESC", company)
+    if not periods:
+        abort(404)
+    d0 = periods[0]
+    year = request.args.get("year", type=int) or d0["payyear"]
+    month = request.args.get("month", type=int) or d0["paymonth"]
+    period = (request.args.get("period") or d0["payperiod"]).strip()
+    rep = pe.engine_regression(company, year, month, period)
+    return render_template("verify.html", rep=rep, periods=periods,
+                           year=year, month=month, period=period)
+
+
+@app.route("/payslip/<company>/<emp_id>")
+def payslip(company, emp_id):
+    periods = q("SELECT DISTINCT TOP 40 payyear, paymonth, payperiod FROM paytranh "
+                "WHERE company=? AND emp_id=? ORDER BY payyear DESC, paymonth DESC, payperiod DESC",
+                company, emp_id)
+    if not periods:
+        abort(404)
+    d0 = periods[0]
+    year = request.args.get("year", type=int) or d0["payyear"]
+    month = request.args.get("month", type=int) or d0["paymonth"]
+    period = (request.args.get("period") or d0["payperiod"]).strip()
+    p = one("SELECT RTRIM(firstname) AS firstname, RTRIM(COALESCE(middlename,'')) AS middlename, "
+            "RTRIM(lastname) AS lastname, RTRIM(COALESCE(jobcode,'')) AS jobcode, "
+            "RTRIM(COALESCE(division,'')) AS division, RTRIM(COALESCE(dept,'')) AS dept, "
+            "RTRIM(COALESCE(sssno,'')) AS sssno, RTRIM(COALESCE(tin,'')) AS tin "
+            "FROM personnel WHERE company=? AND emp_id=?", company, emp_id)
+    if not p:
+        abort(404)
+    lines = q("SELECT t.payitem, RTRIM(COALESCE(MAX(i.descrip), t.payitem)) AS descrip, "
+              "MAX(i.category) AS category, SUM(t.trhours) AS hrs, SUM(t.trdays) AS dys, "
+              "SUM(t.tramount) AS amt FROM paytranh t "
+              "LEFT JOIN payitem i ON i.company=t.company AND i.payitem=t.payitem "
+              "WHERE t.company=? AND t.emp_id=? AND t.payyear=? AND t.paymonth=? AND t.payperiod=? "
+              "GROUP BY t.payitem ORDER BY t.payitem", company, emp_id, year, month, period)
+    sysitems = {"900": "gross", "901": "taxable", "902": "deductions", "903": "net"}
+    totals = {v: 0.0 for v in sysitems.values()}
+    earnings, deductions = [], []
+    for ln in lines:
+        code = ln["payitem"].strip()
+        amt = float(ln["amt"] or 0)
+        ln["amt"] = amt
+        cat = str(ln["category"]).strip() if ln["category"] is not None else ""
+        if code in sysitems:
+            totals[sysitems[code]] = amt
+        elif code.startswith("9") or code.startswith("Z"):
+            continue  # employer shares / provident — not on employee payslip body
+        elif cat == "4":
+            deductions.append(ln)   # statutory + loan deductions (stored positive) → total deductions (902)
+        else:
+            earnings.append(ln)     # basic/OT/allowances; attendance adjustments net into gross (900)
+    return render_template("payslip.html", p=p, company=company, emp_id=emp_id,
+                           periods=periods, year=year, month=month, period=period,
+                           earnings=earnings, deductions=deductions, totals=totals,
+                           comp=one("SELECT RTRIM(companynam) AS nm, RTRIM(COALESCE(address,'')) AS addr, "
+                                    "RTRIM(COALESCE(tin,'')) AS tin FROM company WHERE company=?", company))
+
+
+FORMS = {
+    "sss": {"title": "SSS R-3 — Contribution Collection List", "no": "sssno",
+            "cols": [("SSS No.", "gno"), ("SS EE", "ee"), ("SS ER", "er"), ("EC", "ec"), ("Total", "tot")]},
+    "philhealth": {"title": "PhilHealth RF-1 — Employer Remittance", "no": "phealthno",
+                   "cols": [("PhilHealth No.", "gno"), ("EE Share", "ee"), ("ER Share", "er"), ("Total", "tot")]},
+    "hdmf": {"title": "Pag-IBIG (HDMF) MCRF — Membership Contribution", "no": "hdmfno",
+             "cols": [("Pag-IBIG MID", "gno"), ("EE", "ee"), ("ER", "er"), ("Total", "tot")]},
+}
+
+
+@app.route("/forms/<kind>")
+def forms(kind):
+    company = sel_company()
+    if kind == "alphalist":
+        return alphalist_form(company)
+    f = FORMS.get(kind)
+    if not f:
+        abort(404)
+    eng = pe.engine()
+    emps = q("SELECT RTRIM(p.emp_id) AS emp_id, RTRIM(p.lastname)||', '||RTRIM(p.firstname) AS empname, "
+             f"RTRIM(COALESCE(p.{f['no']},'')) AS gno, pr.salary FROM personnel p "
+             "JOIN payroll pr ON pr.company=p.company AND pr.emp_id=p.emp_id "
+             "WHERE p.company=? AND p.empsts<>'X' AND RTRIM(COALESCE(p." + f["no"] + ",''))<>'' "
+             "ORDER BY p.lastname", company)
+    rows, tot = [], {"ee": 0.0, "er": 0.0, "ec": 0.0, "tot": 0.0}
+    for e in emps:
+        sal = float(e["salary"] or 0)
+        if kind == "sss":
+            c = eng.sss(sal); ee, er, ec = c["ee"], c["er"], c["ec"]
+        elif kind == "philhealth":
+            c = eng.philhealth(sal); ee, er, ec = c["ee"], c["er"], 0.0
+        else:
+            c = eng.hdmf(sal); ee, er, ec = c["ee"], c["er"], 0.0
+        t = pe.r2(ee + er + ec)
+        rows.append({**e, "ee": ee, "er": er, "ec": ec, "tot": t})
+        for k, v in (("ee", ee), ("er", er), ("ec", ec), ("tot", t)):
+            tot[k] += v
+    tot = {k: pe.r2(v) for k, v in tot.items()}
+    return render_template("form_remit.html", f=f, kind=kind, rows=rows, tot=tot,
+                           comp=one("SELECT RTRIM(companynam) AS nm, RTRIM(COALESCE(tin,'')) AS tin, "
+                                    "RTRIM(COALESCE(sssno,'')) AS sssno, RTRIM(COALESCE(hdmfno,'')) AS hdmfno, "
+                                    "RTRIM(COALESCE(phidno,'')) AS phidno FROM company WHERE company=?", company))
+
+
+def alphalist_form(company):
+    year = request.args.get("year", type=int) or 2025
+    rows = q("SELECT RTRIM(p.emp_id) AS emp_id, RTRIM(p.lastname)||', '||RTRIM(p.firstname)||' '||RTRIM(COALESCE(p.middlename,'')) AS empname, "
+             "RTRIM(COALESCE(p.tin,'')) AS tin, RTRIM(p.empsts) AS empsts, "
+             "SUM(CASE WHEN h.payitem='900' THEN h.tramount ELSE 0 END) AS gross, "
+             "SUM(CASE WHEN h.payitem='901' THEN h.tramount ELSE 0 END) AS taxable, "
+             "SUM(CASE WHEN h.payitem='401' THEN h.tramount ELSE 0 END) AS tax "
+             "FROM personnel p JOIN paytranh h ON h.company=p.company AND h.emp_id=p.emp_id "
+             "WHERE p.company=? AND h.payyear=? GROUP BY p.emp_id, p.lastname, p.firstname, p.middlename, p.tin, p.empsts "
+             "ORDER BY p.lastname", company, year)
+    yrs = q("SELECT DISTINCT payyear FROM paytranh WHERE company=? ORDER BY payyear DESC", company)
+    tot = {k: pe.r2(sum(float(r[k] or 0) for r in rows)) for k in ("gross", "taxable", "tax")}
+    return render_template("form_alphalist.html", rows=rows, tot=tot, year=year, yrs=yrs,
+                           comp=one("SELECT RTRIM(companynam) AS nm, RTRIM(COALESCE(tin,'')) AS tin "
+                                    "FROM company WHERE company=?", company))
+
+
+load_lookups()
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=5098, debug=False)

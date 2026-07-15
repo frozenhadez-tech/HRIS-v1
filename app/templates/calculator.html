@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Payroll Calculator · HRPayroll L98{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{{ ab.bar(back_url=url_for('dashboard', mode=mode, company=company), exit_url=url_for('dashboard', mode=mode, company=company)) }}
+{% endblock %}
+
+{% block content %}
+<div class="screen-head">
+  <h1>Payroll Calculator</h1>
+  <p class="crumb">Live statutory + tax computation from the reverse-engineered engine</p>
+</div>
+
+<section class="panel">
+  <form class="filters" method="get">
+    <input type="hidden" name="mode" value="{{ mode }}">
+    <input type="hidden" name="company" value="{{ company }}">
+    <input type="number" step="0.01" name="salary" value="{{ salary or '' }}" placeholder="Monthly salary (₱)…" autofocus>
+    <button type="submit">Compute</button>
+  </form>
+
+  {% if r %}
+  <div class="cols">
+    <div>
+      <h2>Monthly contributions</h2>
+      <table class="ledger">
+        <thead><tr><th>Item</th><th class="num">Employee</th><th class="num">Employer</th></tr></thead>
+        <tbody>
+          <tr><td>SSS <span class="dim">(MSC {{ r.sss.msc | peso }})</span></td><td class="num">{{ r.sss.ee | peso }}</td><td class="num">{{ r.sss.er | peso }}</td></tr>
+          <tr><td>SSS EC</td><td class="num">—</td><td class="num">{{ r.sss.ec | peso }}</td></tr>
+          <tr><td>PhilHealth <span class="dim">(2.5%)</span></td><td class="num">{{ r.philhealth.ee | peso }}</td><td class="num">{{ r.philhealth.er | peso }}</td></tr>
+          <tr><td>Pag-IBIG (HDMF)</td><td class="num">{{ r.hdmf.ee | peso }}</td><td class="num">{{ r.hdmf.er | peso }}</td></tr>
+          <tr class="tot"><td>Employee statutory</td><td class="num strong">{{ r.ee_statutory | peso }}</td><td class="num"></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <h2>Tax &amp; net (estimate)</h2>
+      <dl class="leader">
+        <div><dt>Monthly salary</dt><dd class="mono strong">₱ {{ r.salary | peso }}</dd></div>
+        <div><dt>Monthly taxable</dt><dd class="mono">₱ {{ r.monthly_taxable | peso }}</dd></div>
+        <div><dt>Per-period taxable</dt><dd class="mono">₱ {{ r.semi_taxable | peso }}</dd></div>
+        <div><dt>W/tax per period</dt><dd class="mono">₱ {{ r.semi_tax | peso }}</dd></div>
+        <div><dt>W/tax per month</dt><dd class="mono">₱ {{ r.monthly_tax_est | peso }}</dd></div>
+        <div class="net"><dt>Est. monthly net</dt><dd class="mono strong">₱ {{ r.net_est | peso }}</dd></div>
+      </dl>
+      <p class="note">Semi-monthly TRAIN table; taxable = salary − employee statutory. Excludes OT, allowances, loans, and fixed items, which vary per period.</p>
+    </div>
+  </div>
+  {% else %}
+  <p class="note">Enter a monthly salary to compute SSS, PhilHealth, Pag-IBIG, withholding tax and estimated net.</p>
+  {% endif %}
+</section>
+
+<section class="panel engine-note">
+  <h2>About this engine</h2>
+  <p>The original payroll math lived in the PowerBuilder client, not the database. These formulas were
+  reverse-engineered from 352k rows of closed payroll in <code>paytranh</code> and verified to the centavo:</p>
+  <ul>
+    <li><strong>SSS</strong> — table lookup (<code>ssstable</code>), employee share by monthly gross.</li>
+    <li><strong>PhilHealth</strong> — 2.5% of monthly salary (5% total), floor ₱10k / ceiling ₱100k.</li>
+    <li><strong>Pag-IBIG</strong> — 2% of salary, employee share capped at ₱200.</li>
+    <li><strong>Withholding tax</strong> — BIR TRAIN bracket table (<code>taxtable</code>) on per-period taxable.</li>
+  </ul>
+  <p class="note">See <a href="{{ url_for('engine_verify', mode=mode, company=company) }}">Verify Engine vs History</a>
+  for the match rate against actual stored payroll.</p>
+</section>
+{% endblock %}
