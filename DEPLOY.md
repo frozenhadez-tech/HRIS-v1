@@ -3,6 +3,15 @@
 The app is a Flask app that talks to PostgreSQL. Locally it was built and fully tested
 against a throwaway Postgres; production runs on **Neon** (Postgres) and **Vercel** (hosting).
 
+## ✅ Live deployment (2026-07-15)
+- **URL:** https://hris-v1-woad.vercel.app  (login gate — sign in with a user ID e.g. `RARA`)
+- **Repo:** https://github.com/frozenhadez-tech/HRIS-v1
+- **Vercel project:** `frozenhadez-techs-projects/hris-v1`, function region `sin1` (co-located with Neon ap-southeast-1)
+- **Neon:** `neondb` (all 101 tables, 1.25M rows migrated). Env vars `DATABASE_URL` (pooled) + `SECRET_KEY` set in Vercel Production.
+- **Rotate the seeded login password** after first sign-in.
+
+To redeploy after code changes: `git push` then `vercel --prod --yes` (or connect the GitHub repo in the Vercel dashboard for auto-deploys).
+
 ## Layout
 ```
 OLD HRIS/
