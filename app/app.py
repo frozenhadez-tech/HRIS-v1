@@ -11,11 +11,13 @@ import os
 from functools import wraps
 from flask import (Flask, abort, redirect, render_template, request, session, url_for)
 
+import db
 from db import q, one
 import auth
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-only-change-me")
+app.teardown_appcontext(db.close_conn)
 
 
 def login_required(view):

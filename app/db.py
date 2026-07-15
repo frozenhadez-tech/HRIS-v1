@@ -29,9 +29,33 @@ def _dsn() -> str:
     return DATABASE_URL
 
 
+def _new_conn():
+    # autocommit so read-only requests don't hold a transaction open across queries
+    return psycopg.connect(_dsn(), row_factory=dict_row, connect_timeout=15, autocommit=True)
+
+
 def get_conn():
-    # sslmode required by Neon; harmless for local if the URL omits it
-    return psycopg.connect(_dsn(), row_factory=dict_row, connect_timeout=15)
+    """One connection per Flask request (reused across queries); a fresh one for scripts."""
+    try:
+        from flask import g, has_app_context
+        if has_app_context():
+            if "db_conn" not in g:
+                g.db_conn = _new_conn()
+            return g.db_conn
+    except Exception:
+        pass
+    return _new_conn()
+
+
+def close_conn(_exc=None):
+    try:
+        from flask import g, has_app_context
+        if has_app_context():
+            c = g.pop("db_conn", None)
+            if c is not None:
+                c.close()
+    except Exception:
+        pass
 
 
 _TOP = re.compile(r"^(\s*SELECT\s+)(DISTINCT\s+)?TOP\s+(\d+)\s+", re.IGNORECASE)
@@ -50,10 +74,10 @@ def _pg(sql: str) -> str:
 
 
 def q(sql: str, *params):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(_pg(sql), params)
-            return cur.fetchall()  # list[dict]
+    conn = get_conn()
+    with conn.cursor() as cur:
+        cur.execute(_pg(sql), params)
+        return cur.fetchall()  # list[dict]
 
 
 def one(sql: str, *params):
@@ -62,7 +86,6 @@ def one(sql: str, *params):
 
 
 def execute(sql: str, *params):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(_pg(sql), params)
-        conn.commit()
+    conn = get_conn()
+    with conn.cursor() as cur:
+        cur.execute(_pg(sql), params)

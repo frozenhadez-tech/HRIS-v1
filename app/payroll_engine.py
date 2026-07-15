@@ -114,40 +114,42 @@ def engine():
 
 def engine_regression(company, year, month, period, tol=0.05):
     """Recompute statutory + tax for a CLOSED period from stored gross/taxable,
-    compare to the values the original app stored. Returns per-item match stats."""
-    eng = engine()
-    # stored per-employee: salary, taxable gross (901), and stored deductions
-    emps = _rows(
-        "SELECT pr.emp_id, pr.salary, RTRIM(COALESCE(pr.paytype,'')) paytype "
-        "FROM payroll pr WHERE pr.company=? AND EXISTS("
-        "  SELECT 1 FROM paytranh h WHERE h.company=pr.company AND h.emp_id=pr.emp_id "
-        "  AND h.payyear=? AND h.paymonth=? AND h.payperiod=?)",
-        company, year, month, period)
+    compare to the values the original app stored. Returns per-item match stats.
 
-    def stored(emp, item):
-        r = _rows("SELECT SUM(tramount) s FROM paytranh WHERE company=? AND emp_id=? "
-                  "AND payyear=? AND paymonth=? AND payperiod=? AND payitem=?",
-                  company, emp, year, month, period, item)
-        return float(r[0]["s"]) if r and r[0]["s"] is not None else None
+    One aggregate query pulls each employee's salary, taxable (901) and stored
+    deductions (401-404), keeping the whole check to a single round-trip."""
+    eng = engine()
+    rows = _rows(
+        "SELECT pr.emp_id, pr.salary, "
+        "SUM(CASE WHEN h.payitem='901' THEN h.tramount ELSE 0 END) AS taxable, "
+        "SUM(CASE WHEN h.payitem='402' THEN h.tramount ELSE 0 END) AS sss, "
+        "SUM(CASE WHEN h.payitem='403' THEN h.tramount ELSE 0 END) AS phic, "
+        "SUM(CASE WHEN h.payitem='404' THEN h.tramount ELSE 0 END) AS hdmf, "
+        "SUM(CASE WHEN h.payitem='401' THEN h.tramount ELSE 0 END) AS tax, "
+        "COUNT(CASE WHEN h.payitem='402' THEN 1 END) AS n402, "
+        "COUNT(CASE WHEN h.payitem='403' THEN 1 END) AS n403, "
+        "COUNT(CASE WHEN h.payitem='404' THEN 1 END) AS n404, "
+        "COUNT(CASE WHEN h.payitem='401' THEN 1 END) AS n401 "
+        "FROM payroll pr JOIN paytranh h ON h.company=pr.company AND h.emp_id=pr.emp_id "
+        "WHERE pr.company=? AND h.payyear=? AND h.paymonth=? AND h.payperiod=? "
+        "GROUP BY pr.emp_id, pr.salary",
+        company, year, month, period)
 
     checks = {"SSS (402)": [], "PhilHealth (403)": [], "HDMF (404)": [], "W/Tax (401)": []}
     details = []
-    for e in emps:
-        emp, sal = e["emp_id"].strip(), float(e["salary"] or 0)
-        taxable = stored(emp, "901")
+    for r in rows:
+        emp, sal = r["emp_id"].strip(), float(r["salary"] or 0)
+        taxable = float(r["taxable"] or 0)
         row = {"emp_id": emp, "salary": sal}
-        # SSS (deducted in one period per month; compare only when stored present)
-        for label, item, calc in (
-            ("SSS (402)", "402", lambda: eng.sss(sal)["ee"]),
-            ("PhilHealth (403)", "403", lambda: eng.philhealth(sal)["ee"]),
-            ("HDMF (404)", "404", lambda: eng.hdmf(sal)["ee"]),
-            ("W/Tax (401)", "401", lambda: eng.withholding_tax(taxable or 0, "S")),
+        for label, ncol, scol, cp in (
+            ("SSS (402)", "n402", "sss", eng.sss(sal)["ee"]),
+            ("PhilHealth (403)", "n403", "phic", eng.philhealth(sal)["ee"]),
+            ("HDMF (404)", "n404", "hdmf", eng.hdmf(sal)["ee"]),
+            ("W/Tax (401)", "n401", "tax", eng.withholding_tax(taxable, "S")),
         ):
-            st = stored(emp, item)
-            if st is None:
+            if not r[ncol]:
                 continue
-            st = abs(st)  # deductions stored negative for some items
-            cp = calc()
+            st = abs(float(r[scol] or 0))
             ok = abs(cp - st) <= tol
             checks[label].append(ok)
             if not ok:
@@ -160,7 +162,7 @@ def engine_regression(company, year, month, period, tol=0.05):
         summary[k] = {"n": n, "match": sum(v), "rate": (sum(v) / n * 100) if n else None}
     mism = [d for d in details if d.get("mismatch")]
     return {"company": company, "year": year, "month": month, "period": period,
-            "employees": len(emps), "summary": summary, "mismatches": mism[:40]}
+            "employees": len(rows), "summary": summary, "mismatches": mism[:40]}
 
 
 if __name__ == "__main__":
