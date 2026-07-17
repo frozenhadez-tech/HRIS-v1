@@ -3,7 +3,7 @@
    del_url    → enables Delete for a specific record (employee detail page)
    del_select → enables Delete driven by row-selection (employee list) #}
 {% macro bar(back_url='', exit_url='', section='', sections=None, emp=None,
-             add_url='', edit_url='', del_url='', del_name='', del_select=false) %}
+             add_url='', edit_url='', del_url='', del_name='', del_select=false, add_popout='') %}
 <div class="actionbar" role="toolbar" data-back="{{ back_url }}" data-exit="{{ exit_url }}"
      {% if del_url %}data-del-url="{{ del_url }}"{% endif %}
      {% if del_name %}data-del-name="{{ del_name }}"{% endif %}
@@ -17,7 +17,7 @@
     <span>Refresh</span>
   </button>
   {% if add_url %}
-  <a class="ab-btn" href="{{ add_url }}" title="Add employee">
+  <a class="ab-btn" href="{{ add_url }}" title="Add"{% if add_popout %} data-popout="{{ add_popout }}"{% endif %}>
     <svg viewBox="0 0 16 16"><rect x="2.5" y="2" width="8" height="12" fill="#fff" stroke="#8a8a8a"/><path d="M10.5 10.5h4.2M12.6 8.4v4.2" stroke="#2e7d32" stroke-width="1.9" stroke-linecap="round"/></svg>
     <span>Add</span>
   </a>

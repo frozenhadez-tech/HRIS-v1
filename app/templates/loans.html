@@ -5,7 +5,8 @@
 {% import "_actionbar.html" as ab with context %}
 {{ ab.bar(back_url=url_for('dashboard', mode=mode, company=company),
           exit_url=url_for('dashboard', mode=mode, company=company),
-          add_url=(url_for('emp_row', company=company, emp_id=emp_id, table='loans', mode=mode) if emp else '')) }}
+          add_url=(url_for('loan_form', company=company, emp_id=emp_id, mode=mode) if emp else ''),
+          add_popout=('Loan - Add' if emp else '')) }}
 {% endblock %}
 
 {% block content %}
@@ -102,7 +103,8 @@ table.ln tfoot td { border-top:2px solid var(--ink); font-weight:700; background
         <td><a class="edit-lnk" href="{{ url_for('loan_payments', company=company, rowid=r.rowid, mode=mode) }}"
                data-popout="{{ r.descrip }} Payment History — {{ emp.empname }}">Payments</a></td>
         <td class="row-actions">
-          <a class="edit-lnk" href="{{ url_for('emp_row', company=company, emp_id=emp_id, table='loans', mode=mode, rowid=r.rowid) }}">edit</a>
+          <a class="edit-lnk" href="{{ url_for('loan_form', company=company, rowid=r.rowid, mode=mode) }}"
+             data-popout="Loan - Change">edit</a>
           <form method="post" action="{{ url_for('emp_delete_row', company=company, emp_id=emp_id, table='loans', mode=mode) }}" onsubmit="return confirm('Delete this loan record?')">
             <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="rowid" value="{{ r.rowid }}">
             <button type="submit" class="del-lnk">delete</button>

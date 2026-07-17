@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Loan - {{ 'Change' if rowid else 'Add' }} · {{ emp_id }}{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{{ ab.bar(back_url=back or url_for('loans', company=company, emp_id=emp_id, mode=mode),
+          exit_url=url_for('dashboard', mode=mode, company=company)) }}
+{% endblock %}
+
+{% block content %}
+<div class="screen-head">
+  <a class="back" href="{{ back or url_for('loans', company=company, emp_id=emp_id, mode=mode) }}">‹ Loans</a>
+  <h1>Loan - {{ 'Change' if rowid else 'Add' }}</h1>
+</div>
+
+<section class="panel" style="max-width:760px">
+  {% include "_loan_form.html" %}
+</section>
+{% endblock %}

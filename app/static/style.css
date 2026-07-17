@@ -338,6 +338,24 @@ table.lp td.y, table.lp td.m, table.lp td.d { font-family: var(--mono); }
 table.lp tr:hover td { background: var(--hl); }
 table.lp tfoot td { border-top: 2px solid var(--ink); font-weight: 700; background: var(--paper-deep); }
 
+/* ── loan add / change form (own page + pop-out) ── */
+.loanf .lf-box { border: 1px solid var(--line-strong); padding: 10px 14px 14px; margin: 0 0 14px; }
+.loanf .lf-box legend { font-family: var(--serif); font-weight: 700; font-size: 12.5px; padding: 0 6px; }
+.loanf .lf-emp { display: flex; gap: 30px; flex-wrap: wrap; font-size: 13px; }
+.loanf .lf-emp b { font-weight: 600; color: var(--ink-soft); }
+.loanf .lf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 22px; }
+.loanf label { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--ink); }
+.loanf .lf-wide { grid-column: 1 / -1; grid-template-columns: 150px 1fr; }
+.loanf input, .loanf select { font-family: var(--sans); font-size: 12.5px; padding: 4px 6px;
+  border: 1px solid var(--line-strong); background: var(--paper); color: var(--ink); width: 100%; }
+.loanf input[type=number], .loanf input[type=date] { font-family: var(--mono); }
+.loanf input[type=number] { text-align: right; }
+.loanf input.ro { background: var(--paper-deep); color: var(--ink-soft); font-family: var(--mono);
+  text-align: right; border-style: dashed; }
+.loanf .lf-actions { display: flex; gap: 12px; align-items: center; }
+@media (max-width: 640px) { .loanf .lf-grid { grid-template-columns: 1fr; } }
+
 /* ── pop-out (child window, like the original's floating panels) ── */
 dialog.popout { padding: 0; border: 1px solid var(--ink); background: var(--card); color: var(--ink);
   box-shadow: 6px 6px 0 rgba(29,36,51,.18); max-width: min(720px, 94vw); width: max-content; }

@@ -103,14 +103,43 @@
     dlg.showModal();
     fetch(a.href + (a.href.indexOf('?') > -1 ? '&' : '?') + 'frag=1', { credentials: 'same-origin' })
       .then(function (r) { if (!r.ok) throw 0; return r.text(); })
-      .then(function (html) { body.innerHTML = html; })
+      .then(function (html) { body.innerHTML = html; runScripts(body); })
       .catch(function () {
         body.innerHTML = '<p style="color:var(--stamp)">Could not load it here — ' +
                          '<a href="' + a.href + '">open the full page →</a></p>';
       });
   });
-  dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });  // backdrop
-  dlg.querySelector('[data-popout-close]').addEventListener('click', function () { dlg.close(); });
+
+  // innerHTML never runs <script>, so re-create them — lets a fragment carry its own behaviour
+  function runScripts(root) {
+    root.querySelectorAll('script').forEach(function (old) {
+      var s = document.createElement('script');
+      s.textContent = old.textContent;
+      old.parentNode.replaceChild(s, old);
+    });
+  }
+
+  // A form inside the pop-out saves in place: post it, then refresh the list behind.
+  dlg.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (form.tagName !== 'FORM') return;
+    e.preventDefault();
+    var fd = new FormData(form);
+    fd.append('frag', '1');                       // tells the server to answer 204, not redirect
+    var btn = form.querySelector('[type=submit]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    fetch(form.action, { method: 'POST', body: fd, credentials: 'same-origin' })
+      .then(function (r) { if (!r.ok) throw 0; dlg.close(); location.reload(); })
+      .catch(function () {
+        if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
+        window.__abToast && window.__abToast('Could not save — check the entries and try again.');
+      });
+  });
+
+  dlg.addEventListener('click', function (e) {
+    if (e.target === dlg) dlg.close();                                  // backdrop
+    if (e.target.closest && e.target.closest('[data-popout-close]')) dlg.close();
+  });
 })();
 </script>
 

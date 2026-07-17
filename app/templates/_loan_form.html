@@ -1,0 +1,81 @@
+{# Loan add/change form — mirrors the original "Loan - Add" dialog. Used on its own page
+   and, via ?frag=1, inside the pop-out. #}
+<form class="loanf" method="post" action="{{ url_for('loan_form', company=company, mode=mode) }}">
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+  <input type="hidden" name="emp_id" value="{{ emp_id }}">
+  {% if rowid %}<input type="hidden" name="rowid" value="{{ rowid }}">{% endif %}
+  {% if back %}<input type="hidden" name="back" value="{{ back }}">{% endif %}
+
+  <fieldset class="lf-box">
+    <legend>Employee</legend>
+    <div class="lf-emp">
+      <span><b>No./Name:</b> <span class="mono">{{ emp_id }}</span> &nbsp; <u>{{ emp.empname }}</u></span>
+      <span><b>Status:</b> <u>{{ status or '—' }}</u></span>
+    </div>
+  </fieldset>
+
+  <fieldset class="lf-box">
+    <legend>Loan Details</legend>
+    <div class="lf-grid">
+      <label>Loan description:
+        <select name="payitem" required>
+          <option value="">—</option>
+          {% set codes = items | map(attribute='code') | list %}
+          {% for it in items %}<option value="{{ it.code }}" {{ 'selected' if f.get('payitem')==it.code }}>{{ it.descrip }}</option>{% endfor %}
+          {% if f.get('payitem') and f.get('payitem') not in codes %}<option value="{{ f.get('payitem') }}" selected>{{ f.get('payitem') }} — (unlisted)</option>{% endif %}
+        </select>
+      </label>
+      <label>Type: <input type="text" name="refno" value="{{ f.get('refno','') }}" maxlength="15"></label>
+
+      <label>Reference no.: <input type="text" name="docno" value="{{ f.get('docno','') }}" maxlength="10"></label>
+      <label>Date of 1st payment: <input type="date" name="datefpay" value="{{ f.get('datefpay','') }}"></label>
+
+      <label>Loan date: <input type="date" name="dateapprov" value="{{ f.get('dateapprov','') }}"></label>
+      <label>Date last paid:
+        <input type="text" class="ro" value="{{ ln.datelpay.strftime('%m/%d/%Y') if ln and ln.datelpay else '00/00/0000' }}" readonly></label>
+
+      <label>Loan amount: <input type="number" step="0.01" name="loanamt" value="{{ f.get('loanamt','') }}" data-total></label>
+      <label>Paid amount (Manual input): <input type="number" step="0.01" name="totalpaidi" value="{{ f.get('totalpaidi','') }}"></label>
+
+      <label>Interest amount: <input type="number" step="0.01" name="intamt" value="{{ f.get('intamt','') }}" data-total></label>
+      <label>Paid amount (Payroll deduction):
+        <input type="text" class="ro" value="{{ '%.2f' % (ln.totalpaid or 0) if ln else '0.00' }}" readonly title="Maintained by payroll"></label>
+
+      <label>Total amount: <input type="text" id="lf-total" class="ro" readonly title="Loan amount + interest"></label>
+      <label>Amortization paid:
+        <input type="text" class="ro" value="{{ ln.no_paid or 0 if ln else 0 }}" readonly title="Maintained by payroll"></label>
+
+      <label>No. of amortization: <input type="number" step="1" name="no_of_pay" value="{{ f.get('no_of_pay','') }}"></label>
+      <label>Amortization frequency:
+        <select name="freq">
+          {% for code, lab in freqs %}<option value="{{ code }}" {{ 'selected' if f.get('freq')==code }}>{{ lab }}</option>{% endfor %}
+        </select>
+      </label>
+
+      <label>Amortization amount: <input type="number" step="0.01" name="payded" value="{{ f.get('payded','') }}"></label>
+      <label class="lf-wide">Remarks: <input type="text" name="remarks" value="{{ f.get('remarks','') }}" maxlength="60"></label>
+    </div>
+  </fieldset>
+
+  <div class="lf-actions">
+    <button type="submit" class="btn-save">{{ 'Save changes' if rowid else 'Add loan' }}</button>
+    <button type="button" class="btn-cancel" data-popout-close>Cancel</button>
+  </div>
+</form>
+
+<script>
+// Total amount = loan amount + interest, kept live like the original's computed box.
+(function () {
+  var scope = document.querySelector('.loanf');
+  if (!scope) return;
+  var total = scope.querySelector('#lf-total');
+  var parts = scope.querySelectorAll('[data-total]');
+  function calc() {
+    var sum = 0;
+    parts.forEach(function (i) { sum += parseFloat(i.value) || 0; });
+    total.value = sum.toFixed(2);
+  }
+  parts.forEach(function (i) { i.addEventListener('input', calc); });
+  calc();
+})();
+</script>

@@ -1194,6 +1194,72 @@ def loans():
                            totals=tot, include_paid=include_paid, matches=matches)
 
 
+LOAN_FREQ = [("9", "Every payroll"), ("1", "1st payroll"), ("2", "2nd payroll"), ("3", "3rd payroll")]
+
+# What the Loan form writes. datelpay / totalpaid / no_paid are maintained by payroll and are
+# shown read-only, exactly as the original dialog does.
+LOAN_FORM_FIELDS = [("payitem", "text"), ("refno", "text"), ("docno", "text"),
+                    ("dateapprov", "date"), ("datefpay", "date"), ("loanamt", "num"),
+                    ("intamt", "num"), ("totalpaidi", "num"), ("no_of_pay", "int"),
+                    ("freq", "text"), ("payded", "num"), ("remarks", "text")]
+
+
+@app.route("/loans/form", methods=["GET", "POST"])
+def loan_form():
+    """Add / change a loan — mirrors the original's "Loan - Add" dialog. Opens in the
+    pop-out from the Loans list; ?frag=1 returns just the form body."""
+    company = sel_company()
+    mode = request.values.get("mode", "PY")
+    rowid = request.values.get("rowid", type=int)
+    emp_id = (request.values.get("emp_id") or "").strip()
+
+    ln = one("SELECT * FROM loans WHERE company=? AND rowid=?", company, rowid) if rowid else None
+    if ln:
+        emp_id = (ln["emp_id"] or "").strip()
+    emp = one("SELECT RTRIM(lastname)||', '||RTRIM(COALESCE(firstname,''))"
+              "||CASE WHEN COALESCE(RTRIM(middlename),'')<>'' THEN ' '||RTRIM(middlename) ELSE '' END AS empname, "
+              "RTRIM(COALESCE(empsts,'')) AS empsts FROM personnel WHERE company=? AND RTRIM(emp_id)=?",
+              company, emp_id) if emp_id else None
+    if not emp:
+        abort(404)
+
+    if request.method == "POST":
+        data = {c: _cast(request.form.get(c), t) for c, t in LOAN_FORM_FIELDS}
+        user, now = session.get("user", {}).get("id", ""), datetime.datetime.now()
+        if rowid:
+            sets = ",".join(f"{c}=?" for c, _ in LOAN_FORM_FIELDS)
+            db.execute(f"UPDATE loans SET {sets},changeby=?,changedate=? WHERE company=? AND rowid=?",
+                       *([data[c] for c, _ in LOAN_FORM_FIELDS] + [user, now, company, rowid]))
+        else:
+            cols = ["company", "emp_id"] + [c for c, _ in LOAN_FORM_FIELDS] + ["changeby", "changedate"]
+            vals = [company, emp_id] + [data[c] for c, _ in LOAN_FORM_FIELDS] + [user, now]
+            db.execute(f"INSERT INTO loans ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})", *vals)
+        flash(f"Loan {'updated' if rowid else 'added'} for {emp_id}.", "ok")
+        if request.form.get("frag"):
+            return ("", 204)                      # pop-out: the page just reloads the list
+        return redirect(request.form.get("back") or url_for("loans", company=company, emp_id=emp_id, mode=mode))
+
+    f = {}
+    if ln:
+        for k, v in ln.items():
+            if isinstance(v, (datetime.date, datetime.datetime)):
+                f[k] = v.strftime("%Y-%m-%d")
+            else:
+                f[k] = "" if v is None else (v.strip() if isinstance(v, str) else v)
+    else:                                          # sensible defaults for a new loan
+        today = datetime.date.today().isoformat()
+        f = {"refno": "Principal", "dateapprov": today, "datefpay": today, "freq": "9",
+             "loanamt": 0, "intamt": 0, "totalpaidi": 0, "payded": 0, "no_of_pay": 0}
+    items = q("SELECT RTRIM(payitem) AS code, RTRIM(COALESCE(descrip,payitem)) AS descrip "
+              "FROM payitem WHERE company=? AND category='8' ORDER BY descrip", company)
+    st = one("SELECT RTRIM(descrip) AS d FROM tablecode1 WHERE tblcode='EST' AND RTRIM(fldcode)=?",
+             emp["empsts"]) if emp["empsts"] else None
+    tpl = "_loan_form.html" if request.args.get("frag") else "loan_form.html"
+    return render_template(tpl, emp=emp, emp_id=emp_id, status=(st["d"] if st else emp["empsts"]),
+                           f=f, ln=ln, items=items, freqs=LOAN_FREQ, rowid=rowid,
+                           back=request.args.get("back", ""))
+
+
 @app.route("/loans/payments")
 def loan_payments():
     """Payment history for ONE loan — the instalments actually deducted through payroll.

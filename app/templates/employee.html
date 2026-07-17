@@ -104,6 +104,9 @@
     <h2>{{ spec.label }}</h2>
     {% if spec.single %}
       <a class="add-btn" href="{{ url_for('emp_row', company=p.company, emp_id=p.emp_id, table=spec.table, mode=mode) }}">{{ 'Edit' if sec.rows else '+ Set up' }}</a>
+    {% elif spec.form %}
+      <a class="add-btn" href="{{ url_for(spec.form.endpoint, company=p.company, emp_id=p.emp_id, mode=mode) }}"
+         {%- if spec.form.popout %} data-popout="{{ spec.form.add_title }}"{% endif %}>+ Add</a>
     {% else %}
       <a class="add-btn" href="{{ url_for('emp_row', company=p.company, emp_id=p.emp_id, table=spec.table, mode=mode) }}">+ Add</a>
     {% endif %}
@@ -129,7 +132,12 @@
         {% if spec.file %}<td>{% if row.hasfile %}<a class="edit-lnk" target="_blank" href="{{ url_for('emp_file', company=p.company, emp_id=p.emp_id, table=spec.table, rowid=row.rowid) }}">download</a>{% else %}<span class="dim">—</span>{% endif %}</td>{% endif %}
         {% if not spec.single %}
         <td class="row-actions">
+          {% if spec.form %}
+          <a class="edit-lnk" href="{{ url_for(spec.form.endpoint, company=p.company, rowid=row.rowid, mode=mode) }}"
+             {%- if spec.form.popout %} data-popout="{{ spec.form.edit_title }}"{% endif %}>edit</a>
+          {% else %}
           <a class="edit-lnk" href="{{ url_for('emp_row', company=p.company, emp_id=p.emp_id, table=spec.table, mode=mode, rowid=row.rowid) }}">edit</a>
+          {% endif %}
           <form method="post" action="{{ url_for('emp_delete_row', company=p.company, emp_id=p.emp_id, table=spec.table, mode=mode) }}" onsubmit="return confirm('Delete this record?')">
             <input type="hidden" name="csrf" value="{{ csrf_token() }}">
             <input type="hidden" name="rowid" value="{{ row.rowid }}">

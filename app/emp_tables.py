@@ -70,6 +70,9 @@ SECTIONS = {
          # per-row link column: each loan opens its own instalment history in a pop-out
          "row_link": {"endpoint": "loan_payments", "label": "Payments", "popout": True,
                       "title": "Payment History", "title_col": "descrip"},
+         # add/change uses the dedicated Loan dialog rather than the generic row form
+         "form": {"endpoint": "loan_form", "popout": True, "add_title": "Loan - Add",
+                  "edit_title": "Loan - Change"},
          "fields": [
             ("payitem", "Loan item", "text"), ("refno", "Type", "text"), ("loanamt", "Principal", "num"),
             ("intamt", "Interest", "num"), ("payded", "Per pay", "num"),
