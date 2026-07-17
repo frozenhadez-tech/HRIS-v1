@@ -99,6 +99,7 @@
 {% elif d.sections %}
   {% for sec in d.sections %}
   {% set spec = sec.spec %}
+  {% set cols = spec.list_cols or spec.fields %}   {# a section may list different columns than it edits #}
   <div class="sec-head">
     <h2>{{ spec.label }}</h2>
     {% if spec.single %}
@@ -109,14 +110,14 @@
   </div>
   <table class="ledger wide">
     <thead><tr>
-      {% for col, label, typ in spec.fields %}<th class="{{ 'num' if typ in ('num','int') }}">{{ label }}</th>{% endfor %}
+      {% for col, label, typ in cols %}<th class="{{ 'num' if typ in ('num','int') }}">{{ label }}</th>{% endfor %}
       {% if spec.file %}<th>File</th>{% endif %}
       {% if not spec.single %}<th class="actions-col"></th>{% endif %}
     </tr></thead>
     <tbody>
     {% for row in sec.rows %}
       <tr>
-        {% for col, label, typ in spec.fields %}
+        {% for col, label, typ in cols %}
           {% if typ == 'num' %}<td class="num">{{ row[col] | peso }}</td>
           {% elif typ == 'int' %}<td class="num">{{ row[col] | intf }}</td>
           {% elif typ == 'date' %}<td class="mono">{{ row[col] | dt }}</td>
@@ -135,12 +136,15 @@
         {% endif %}
       </tr>
     {% else %}
-      <tr><td colspan="{{ spec.fields|length + (1 if spec.file else 0) + (0 if spec.single else 1) }}" class="empty">No records.</td></tr>
+      <tr><td colspan="{{ cols|length + (1 if spec.file else 0) + (0 if spec.single else 1) }}" class="empty">No records.</td></tr>
     {% endfor %}
     </tbody>
   </table>
   {% endfor %}
-  {% if tab == 'payroll' %}<p style="margin:16px 0 0"><a class="back" href="{{ url_for('payslip', company=p.company, emp_id=p.emp_id, mode=mode) }}">🧾 View / print payslip →</a></p>{% endif %}
+  {% if tab == 'payroll' %}<p style="margin:16px 0 0;display:flex;gap:22px;flex-wrap:wrap">
+    <a class="back" href="{{ url_for('payslip', company=p.company, emp_id=p.emp_id, mode=mode) }}">🧾 View / print payslip →</a>
+    <a class="back" href="{{ url_for('loans', company=p.company, emp_id=p.emp_id, mode=mode) }}">💵 Loans screen (with payment history) →</a>
+  </p>{% endif %}
 {% endif %}
 </section>
 

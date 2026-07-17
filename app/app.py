@@ -414,14 +414,18 @@ def load_emp_tab(tab, co, emp, p):
     if tab in emp_tables.SECTION_TABS:
         sections = []
         for s in emp_tables.SECTIONS[tab]:
-            fcols = [c for c, _, _ in s["fields"]]
-            cols = fcols if s.get("single") else (["rowid"] + fcols)
-            sel = ", ".join(cols)
-            if s.get("file"):
-                sel += f", ({s['file']['col']} IS NOT NULL) AS hasfile"
-            sql = (f"SELECT {sel} FROM {s['table']} WHERE company=? AND emp_id=?"
-                   + (f" ORDER BY {s['order']}" if s.get("order") else ""))
-            sections.append({"spec": s, "rows": q(sql, co, emp)})
+            if s.get("list_sql"):        # section brings its own list query (joins / derived columns)
+                rows = q(s["list_sql"], co, emp)
+            else:
+                fcols = [c for c, _, _ in s["fields"]]
+                cols = fcols if s.get("single") else (["rowid"] + fcols)
+                sel = ", ".join(cols)
+                if s.get("file"):
+                    sel += f", ({s['file']['col']} IS NOT NULL) AS hasfile"
+                sql = (f"SELECT {sel} FROM {s['table']} WHERE company=? AND emp_id=?"
+                       + (f" ORDER BY {s['order']}" if s.get("order") else ""))
+                rows = q(sql, co, emp)
+            sections.append({"spec": s, "rows": rows})
         return {"sections": sections}
     if tab == "employment":
         return {

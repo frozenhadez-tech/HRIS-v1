@@ -44,9 +44,32 @@ SECTIONS = {
             ("salary", "Salary rate", "num"), ("paytype", "Pay type (D/M)", "text"),
             ("paygroup", "Pay group", "text"), ("paymode", "Pay mode", "text"),
             ("bankcode", "Bank code", "text"), ("bankacct", "Bank account", "text")]},
-        {"table": "loans", "label": "Loans", "order": "dateapprov DESC", "fields": [
-            ("payitem", "Loan item", "text"), ("refno", "Ref no", "text"), ("loanamt", "Amount", "num"),
-            ("payded", "Per pay", "num"), ("no_of_pay", "Terms", "int"), ("totalpaid", "Total paid", "num")]}],
+        # The list joins payitem for the loan's name and derives the same figures the Loans
+        # screen shows: Amount = principal + interest, Total Paid = paid + paid adjustments,
+        # Balance = the difference. loanamt 99999 flags an open-ended fund, which has no
+        # fixed amount — nulled so it renders blank. `fields` still drives the edit form.
+        {"table": "loans", "label": "Loans", "order": "dateapprov DESC",
+         "list_sql":
+             "SELECT l.rowid, RTRIM(COALESCE(i.descrip, l.payitem)) AS descrip, l.dateapprov, "
+             "RTRIM(COALESCE(l.refno,'')) AS ltype, "
+             "CASE WHEN COALESCE(l.loanamt,0)>=99999 THEN NULL "
+             "     ELSE COALESCE(l.loanamt,0)+COALESCE(l.intamt,0) END AS amount, "
+             "COALESCE(l.payded,0) AS payded, "
+             "COALESCE(l.totalpaid,0)+COALESCE(l.totalpaidi,0) AS paid, "
+             "CASE WHEN COALESCE(l.loanamt,0)>=99999 THEN 0 "
+             "     ELSE (COALESCE(l.loanamt,0)+COALESCE(l.intamt,0))"
+             "          -(COALESCE(l.totalpaid,0)+COALESCE(l.totalpaidi,0)) END AS bal, "
+             "RTRIM(COALESCE(l.docno,'')) AS docno "
+             "FROM loans l LEFT JOIN payitem i ON i.company=l.company AND i.payitem=l.payitem "
+             "WHERE l.company=? AND l.emp_id=? ORDER BY l.dateapprov DESC",
+         "list_cols": [("descrip", "Loan", "text"), ("dateapprov", "Date", "date"),
+                       ("ltype", "Type", "text"), ("amount", "Amount", "num"),
+                       ("payded", "Per Pay", "num"), ("paid", "Total Paid", "num"),
+                       ("bal", "Balance", "num"), ("docno", "Doc. No.", "text")],
+         "fields": [
+            ("payitem", "Loan item", "text"), ("refno", "Type", "text"), ("loanamt", "Principal", "num"),
+            ("intamt", "Interest", "num"), ("payded", "Per pay", "num"),
+            ("no_of_pay", "Terms", "int"), ("totalpaid", "Total paid", "num")]}],
     "fixallow": [{"table": "fixallow", "label": "Fixed allowances", "order": "payitem", "fields": [
         ("payitem", "Pay item", "text"), ("amount", "Amount", "num"), ("freq", "Frequency", "text"),
         ("paytype", "Pay type", "text"), ("effdate", "Effective", "date")]}],
