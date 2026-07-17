@@ -34,7 +34,7 @@ PAYROLL_MENU = [
         ("Holiday Table", "s:holidays"),
         ("Employee Shifts", "s:empshift"),
         ("—", ""),
-        ("Time Card Update", "r:tc_view"),
+        ("Time Card Update", "e:timecard_edit"),
         ("Time Card Inquiry", "e:timecard"),
         ("—", ""),
         ("Daily Attendance Report", "r:att_daily"),

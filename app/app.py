@@ -941,6 +941,143 @@ def timecard():
                            shift=shift, recalc=recalc, truncated=truncated, cap=CAP)
 
 
+def _parse_punch(s):
+    """Parse a punch input ('8:09', '08:09', '809', '0809') into a numeric HHMM, or None."""
+    s = (s or "").strip()
+    if not s:
+        return None
+    try:
+        if ":" in s:
+            h, m = s.split(":")[:2]
+            h, m = int(h), int(m)
+        else:
+            v = int(s.replace(".", ""))
+            h, m = v // 100, v % 100
+        if 0 <= h <= 47 and 0 <= m <= 59:
+            return h * 100 + m
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
+def _min_to_hhmm(mins):
+    if mins is None:
+        return None
+    mins = int(mins) % 1440
+    return f"{mins // 60:02d}:{mins % 60:02d}"
+
+
+@app.route("/timecard/edit", methods=["GET", "POST"])
+def timecard_edit():
+    """Time Card Update — enter raw punches per day; the app derives regular hours,
+    tardy, undertime and night premium from the employee's shift schedule and upserts
+    the timecard. Overtime stays an approved entry (Overtime Entry screen)."""
+    import attendance_engine as ae
+    company = sel_company()
+    mode = request.args.get("mode", "PY")
+    emp_id = (request.values.get("emp_id") or "").strip()
+    mx = one("SELECT MAX(trdate) AS d FROM timecard WHERE company=? AND trdate < '2100-01-01'", company)
+    dmax = mx["d"].date() if mx and mx["d"] else datetime.date.today()
+    dfrom = (request.values.get("dfrom") or dmax.replace(day=1).isoformat()).strip()
+    dto = (request.values.get("dto") or dmax.isoformat()).strip()
+    try:
+        d0, d1 = datetime.date.fromisoformat(dfrom), datetime.date.fromisoformat(dto)
+    except ValueError:
+        d0, d1 = dmax.replace(day=1), dmax
+    if d1 < d0:
+        d0, d1 = d1, d0
+    if (d1 - d0).days > 62:
+        d1 = d0 + datetime.timedelta(days=62)
+    dates = [d0 + datetime.timedelta(days=i) for i in range((d1 - d0).days + 1)]
+
+    emp = one("SELECT RTRIM(lastname)||', '||RTRIM(firstname)"
+              "||CASE WHEN COALESCE(RTRIM(middlename),'')<>'' THEN ' '||LEFT(RTRIM(middlename),1) ELSE '' END AS empname "
+              "FROM personnel WHERE company=? AND emp_id=?", company, emp_id) if emp_id else None
+
+    if request.method == "POST" and emp_id and emp:
+        scheds = ae.schedule_range(company, emp_id, dates)
+        existing_ot = {r["trdate"].date().isoformat(): float(r["othrs"] or 0) for r in q(
+            "SELECT trdate, othrs FROM timecard WHERE company=? AND emp_id=? AND trdate>=? AND trdate<=?",
+            company, emp_id, d0.isoformat(), d1.isoformat())}
+        user = session.get("user", {}).get("id", "")
+        now = datetime.datetime.now()
+        saved = 0
+        for d in dates:
+            key = d.isoformat()
+            in1, out1 = _parse_punch(request.form.get("in1_" + key)), _parse_punch(request.form.get("out1_" + key))
+            in2, out2 = _parse_punch(request.form.get("in2_" + key)), _parse_punch(request.form.get("out2_" + key))
+            dayoff = request.form.get("dayoff_" + key) == "1"
+            if not any(v is not None for v in (in1, out1, in2, out2)) and not dayoff:
+                continue                                  # untouched day — leave it alone
+            sch = scheds.get(d)
+            if not sch:
+                continue
+            res = ae.compute_day(sch, [(in1, out1), (in2, out2)], dayoff=dayoff,
+                                 approved_ot=existing_ot.get(key, 0.0))
+            db.execute(
+                "INSERT INTO timecard (company,emp_id,trdate,daycd,shift,dayoff,timein1,timeout1,timein2,timeout2,"
+                "stdhours,stdtimein,stdbrkout,stdbrkin,stdtimeout,tlhours,reghrs,tardy,undertime,nphrs,recalcflg,"
+                "changeby,changedate) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                "ON CONFLICT (company,emp_id,trdate) DO UPDATE SET daycd=EXCLUDED.daycd, shift=EXCLUDED.shift, "
+                "dayoff=EXCLUDED.dayoff, timein1=EXCLUDED.timein1, timeout1=EXCLUDED.timeout1, timein2=EXCLUDED.timein2, "
+                "timeout2=EXCLUDED.timeout2, stdhours=EXCLUDED.stdhours, stdtimein=EXCLUDED.stdtimein, "
+                "stdbrkout=EXCLUDED.stdbrkout, stdbrkin=EXCLUDED.stdbrkin, stdtimeout=EXCLUDED.stdtimeout, "
+                "tlhours=EXCLUDED.tlhours, reghrs=EXCLUDED.reghrs, tardy=EXCLUDED.tardy, undertime=EXCLUDED.undertime, "
+                "nphrs=EXCLUDED.nphrs, recalcflg='N', changeby=EXCLUDED.changeby, changedate=EXCLUDED.changedate",
+                company, emp_id, key, str(sch["daycode"]), sch["shift"], ("1" if dayoff else "0"),
+                in1, out1, in2, out2, sch["stdhours"], _min_to_hhmm(sch["stdin"]), _min_to_hhmm(sch["brkout"]),
+                _min_to_hhmm(sch["brkin"]), _min_to_hhmm(sch["stdout"]), res["tlhours"], res["reghrs"],
+                res["tardy"], res["undertime"], res["nphrs"], "N", user, now)
+            saved += 1
+        flash(f"Saved {saved} day(s) for {emp_id} — recomputed regular hours, tardy, undertime and night premium."
+              if saved else "Nothing to save — enter time in/out (or tick Day Off) on at least one day.",
+              "ok" if saved else "error")
+        return redirect(url_for("timecard_edit", company=company, mode=mode, emp_id=emp_id,
+                                dfrom=d0.isoformat(), dto=d1.isoformat()))
+
+    rows = []
+    if emp_id and emp:
+        scheds = ae.schedule_range(company, emp_id, dates)
+        stored = {r["trdate"].date().isoformat(): r for r in q(
+            "SELECT trdate, COALESCE(dayoff,'') AS dayoff, timein1,timeout1,timein2,timeout2, "
+            "reghrs,tardy,undertime,nphrs,othrs,tlhours, RTRIM(COALESCE(shift,'')) AS shift "
+            "FROM timecard WHERE company=? AND emp_id=? AND trdate>=? AND trdate<=?",
+            company, emp_id, d0.isoformat(), d1.isoformat())}
+        DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+        def hhmm(v):
+            if v is None:
+                return ""
+            v = int(v)
+            return "" if v <= 0 else f"{v // 100:02d}:{v % 100:02d}"
+
+        def numf(v):
+            if v is None:
+                return ""
+            f = float(v)
+            return "" if abs(f) < 0.005 else f"{f:.2f}"
+
+        for d in dates:
+            key = d.isoformat()
+            s = stored.get(key)
+            sch = scheds.get(d)
+            off = (str(s["dayoff"]).strip() in ("1", "Y")) if s else (sch["dayoff"] if sch else False)
+            rows.append({
+                "key": key, "date": d.strftime("%m/%d/%Y"), "dow": DOW[d.weekday()],
+                "weekend": d.weekday() >= 5, "dayoff": off, "exists": bool(s),
+                "shift": (s["shift"] if s and s["shift"] else (sch["shift"] if sch else "")),
+                "sched": (_min_to_hhmm(sch["stdin"]) + "–" + _min_to_hhmm(sch["stdout"])) if sch and sch["stdin"] is not None else "",
+                "in1": hhmm(s["timein1"]) if s else "", "out1": hhmm(s["timeout1"]) if s else "",
+                "in2": hhmm(s["timein2"]) if s else "", "out2": hhmm(s["timeout2"]) if s else "",
+                "reg": numf(s["reghrs"]) if s else (numf(sch["stdhours"]) if sch and not off else ""),
+                "tardy": numf(float(s["tardy"] or 0) / 60.0) if s else "",
+                "undt": numf(s["undertime"]) if s else "", "np": numf(s["nphrs"]) if s else "",
+                "ot": numf(s["othrs"]) if s else "", "total": numf(s["tlhours"]) if s else "",
+            })
+    return render_template("timecard_edit.html", emp_id=emp_id, emp=emp, rows=rows,
+                           dfrom=d0.isoformat(), dto=d1.isoformat())
+
+
 @app.route("/engine/verify")
 def engine_verify():
     company = sel_company()
