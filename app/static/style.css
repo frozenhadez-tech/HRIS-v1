@@ -352,10 +352,13 @@ dialog.popout::backdrop { background: rgba(29,36,51,.34); }
 .popout-body .note { margin-bottom: 0; }
 
 /* ── print ──
-   @page supplies the paper margin (without it the sheet printed edge-to-edge and the
-   printer's non-printable area clipped both sides). `size: auto` keeps whatever paper
-   the user picks in the print dialog. */
-@page { size: auto; margin: 14mm; }
+   Two separate insets, on purpose. @page asks for a paper margin, but the print dialog's
+   own Margins setting overrides it (set it to "None" and @page is ignored), which left the
+   sheet flush to the edge and the printer's non-printable border shaved off the company
+   name, PAYSLIP and the right-hand amounts. So .paper also keeps its own padding: that one
+   is part of the content and no dialog setting can strip it. `size: auto` keeps whatever
+   paper the user picks. */
+@page { size: auto; margin: 10mm; }
 
 @media print {
   .titlebar, .menubar, .actionbar, footer, .no-print, .screen-head, .toast { display: none !important; }
@@ -366,7 +369,8 @@ dialog.popout::backdrop { background: rgba(29,36,51,.34); }
   main { margin: 0; padding: 0; width: auto; max-width: none; }
   .paper {
     background: #fff; border: none; box-shadow: none;
-    width: auto; max-width: none; margin: 0; padding: 0;
+    width: auto; max-width: none; margin: 0;
+    padding: 9mm;                     /* survives Margins: None — never let text touch the edge */
     break-inside: avoid; page-break-inside: avoid;
   }
   /* keep the rules, headings and NET PAY in their intended ink */
