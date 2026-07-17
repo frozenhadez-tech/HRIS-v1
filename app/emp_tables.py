@@ -43,11 +43,12 @@ SECTIONS = {
         {"table": "payroll", "label": "Payroll setup", "single": True, "fields": [
             ("salary", "Salary rate", "num"), ("paytype", "Pay type (D/M)", "text"),
             ("paygroup", "Pay group", "text"), ("paymode", "Pay mode", "text"),
-            ("bankcode", "Bank code", "text"), ("bankacct", "Bank account", "text")]},
-        # The list joins payitem for the loan's name and derives the same figures the Loans
-        # screen shows: Amount = principal + interest, Total Paid = paid + paid adjustments,
-        # Balance = the difference. loanamt 99999 flags an open-ended fund, which has no
-        # fixed amount — nulled so it renders blank. `fields` still drives the edit form.
+            ("bankcode", "Bank code", "text"), ("bankacct", "Bank account", "text")]}],
+    # Loans get their own tab — the list joins payitem for the loan's name and derives the
+    # same figures the Loans screen shows: Amount = principal + interest, Total Paid = paid
+    # + paid adjustments, Balance = the difference. loanamt 99999 flags an open-ended fund,
+    # which has no fixed amount — nulled so it renders blank. `fields` drives the edit form.
+    "loans": [
         {"table": "loans", "label": "Loans", "order": "dateapprov DESC",
          "list_sql":
              "SELECT l.rowid, RTRIM(COALESCE(i.descrip, l.payitem)) AS descrip, l.dateapprov, "

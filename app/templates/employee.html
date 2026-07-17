@@ -141,10 +141,8 @@
     </tbody>
   </table>
   {% endfor %}
-  {% if tab == 'payroll' %}<p style="margin:16px 0 0;display:flex;gap:22px;flex-wrap:wrap">
-    <a class="back" href="{{ url_for('payslip', company=p.company, emp_id=p.emp_id, mode=mode) }}">🧾 View / print payslip →</a>
-    <a class="back" href="{{ url_for('loans', company=p.company, emp_id=p.emp_id, mode=mode) }}">💵 Loans screen (with payment history) →</a>
-  </p>{% endif %}
+  {% if tab == 'payroll' %}<p style="margin:16px 0 0"><a class="back" href="{{ url_for('payslip', company=p.company, emp_id=p.emp_id, mode=mode) }}">🧾 View / print payslip →</a></p>{% endif %}
+  {% if tab == 'loans' %}<p style="margin:16px 0 0"><a class="back" href="{{ url_for('loans', company=p.company, emp_id=p.emp_id, mode=mode) }}">💵 Loans screen (with payment history) →</a></p>{% endif %}
 {% endif %}
 </section>
 

@@ -361,7 +361,7 @@ EMP_TABS = [
     ("training", "Training"), ("workexp", "Work Exp"), ("dependents", "Dependents"),
     ("leaves", "Leaves"), ("medical", "Medical Hist"), ("appraisal", "Appraisal"),
     ("disciplinary", "Disciplinary"), ("doc", "Documents"), ("payroll", "Payroll"),
-    ("fixallow", "Fix Allow"), ("fixded", "Fix Ded'n"),
+    ("loans", "Loans"), ("fixallow", "Fix Allow"), ("fixded", "Fix Ded'n"),
 ]
 
 
