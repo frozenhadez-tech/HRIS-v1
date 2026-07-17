@@ -881,7 +881,7 @@ def timecard():
     if emp_id:
         where.append("t.emp_id=?"); params.append(emp_id)
     if paygroup:
-        where.append("RTRIM(COALESCE(t.paygroup,''))=?"); params.append(paygroup)
+        where.append("RTRIM(COALESCE(pr.paygroup,''))=?"); params.append(paygroup)
     if shift:
         where.append("RTRIM(COALESCE(t.shift,''))=?"); params.append(shift)
     if recalc == "Y":
@@ -898,6 +898,7 @@ def timecard():
         "  COALESCE(t.recalcflg,'') AS recalcflg, RTRIM(COALESCE(t.paygroup,'')) AS paygroup, "
         "  RTRIM(COALESCE(pi.shortdesc, t.payitem1)) AS chargeto "
         "FROM timecard t JOIN personnel p ON p.company=t.company AND p.emp_id=t.emp_id "
+        "LEFT JOIN payroll pr ON pr.company=t.company AND pr.emp_id=t.emp_id "
         "LEFT JOIN payitem pi ON pi.company=t.company AND pi.payitem=t.payitem1 "
         "WHERE " + " AND ".join(where) +
         " ORDER BY p.lastname, p.firstname, t.emp_id, t.trdate", *params)
