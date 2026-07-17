@@ -1,0 +1,38 @@
+{# Payment history body — rendered on its own page and, via ?frag=1, inside the pop-out. #}
+<p class="lp-sub">
+  Approved {{ ln.dateapprov.month }}/{{ ln.dateapprov.day }}/{{ ln.dateapprov.year }}
+  {%- if ln.docno %} · Doc. No. {{ ln.docno }}{% endif %}
+  {%- if amount is not none %} · Loan Amount {{ amount | peso }}{% endif %}
+</p>
+
+<table class="lp">
+  <thead><tr>
+    <th></th><th>Year</th><th>Month</th><th>Pay Period</th><th>Date</th><th class="n">Amount</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="idx">{{ loop.index }}.</td>
+      <td class="y">{{ r.year if r.show_year else '' }}</td>
+      <td class="m">{{ r.month if r.show_month else '' }}</td>
+      <td>{{ r.period }}</td>
+      <td class="d">{% if r.paydate %}{{ '%02d/%02d/%04d' % (r.paydate.month, r.paydate.day, r.paydate.year) }}{% endif %}</td>
+      <td class="n">{{ r.amt | peso }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="empty" style="text-align:center;padding:18px">
+      No instalments have been deducted for this loan yet.</td></tr>
+  {% endfor %}
+  </tbody>
+  {% if rows %}
+  <tfoot><tr>
+    <td colspan="5" style="text-align:right">{{ rows|length }} instalment{{ '' if rows|length==1 else 's' }}</td>
+    <td class="n">{{ total | peso }}</td>
+  </tr></tfoot>
+  {% endif %}
+</table>
+
+{% if amount is not none and rows %}
+<p class="note">Paid {{ total | peso }} of {{ amount | peso }}{% if (amount - total) > 0.005 %} ·
+  <strong style="color:var(--stamp)">{{ (amount - total) | peso }} outstanding</strong>{% else %} · fully paid{% endif %}.</p>
+{% endif %}

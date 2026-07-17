@@ -1227,7 +1227,9 @@ def loan_payments():
         py, pm = y, m
     amount = float(ln["loanamt"]) + float(ln["intamt"])
     paid = sum(r["amt"] for r in rows)
-    return render_template("loan_payments.html", emp=emp, ln=ln, rows=rows, total=paid,
+    # ?frag=1 returns just the body, for the pop-out; without it, the full page still works
+    tpl = "_loan_payments.html" if request.args.get("frag") else "loan_payments.html"
+    return render_template(tpl, emp=emp, ln=ln, rows=rows, total=paid,
                            amount=(None if float(ln["loanamt"]) >= FUND_SENTINEL else amount))
 
 

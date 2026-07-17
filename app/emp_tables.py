@@ -67,8 +67,9 @@ SECTIONS = {
                        ("ltype", "Type", "text"), ("amount", "Amount", "num"),
                        ("payded", "Per Pay", "num"), ("paid", "Total Paid", "num"),
                        ("bal", "Balance", "num"), ("docno", "Doc. No.", "text")],
-         # per-row link column: each loan opens its own instalment history
-         "row_link": {"endpoint": "loan_payments", "label": "Payments"},
+         # per-row link column: each loan opens its own instalment history in a pop-out
+         "row_link": {"endpoint": "loan_payments", "label": "Payments", "popout": True,
+                      "title": "Payment History", "title_col": "descrip"},
          "fields": [
             ("payitem", "Loan item", "text"), ("refno", "Type", "text"), ("loanamt", "Principal", "num"),
             ("intamt", "Interest", "num"), ("payded", "Per pay", "num"),

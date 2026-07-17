@@ -99,7 +99,8 @@ table.ln tfoot td { border-top:2px solid var(--ink); font-weight:700; background
         <td class="n">{{ r.paid | peso }}</td>
         <td class="n bal {{ 'due' if r.balance > 0.005 }}">{{ r.balance | peso }}</td>
         <td class="doc">{{ r.docno }}</td>
-        <td><a class="edit-lnk" href="{{ url_for('loan_payments', company=company, rowid=r.rowid, mode=mode) }}">Payments</a></td>
+        <td><a class="edit-lnk" href="{{ url_for('loan_payments', company=company, rowid=r.rowid, mode=mode) }}"
+               data-popout="{{ r.descrip }} Payment History — {{ emp.empname }}">Payments</a></td>
         <td class="row-actions">
           <a class="edit-lnk" href="{{ url_for('emp_row', company=company, emp_id=emp_id, table='loans', mode=mode, rowid=r.rowid) }}">edit</a>
           <form method="post" action="{{ url_for('emp_delete_row', company=company, emp_id=emp_id, table='loans', mode=mode) }}" onsubmit="return confirm('Delete this loan record?')">

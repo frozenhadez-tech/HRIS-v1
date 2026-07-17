@@ -79,6 +79,41 @@
 {% block content %}{% endblock %}
 </main>
 
+<dialog id="popout" class="popout">
+  <div class="popout-head">
+    <span class="popout-title"></span>
+    <button type="button" class="popout-x" data-popout-close aria-label="Close">✕ Close</button>
+  </div>
+  <div class="popout-body"></div>
+</dialog>
+
+<script>
+// A link marked data-popout opens its target in the pop-out instead of navigating.
+// The href still points at the real page, so it stays reachable if this can't run.
+(function () {
+  var dlg = document.getElementById('popout');
+  if (!dlg || !dlg.showModal) return;
+  var body = dlg.querySelector('.popout-body'), title = dlg.querySelector('.popout-title');
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest ? e.target.closest('a[data-popout]') : null;
+    if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return;   // let modified clicks open a tab
+    e.preventDefault();
+    title.textContent = a.getAttribute('data-popout') || 'Details';
+    body.innerHTML = '<p class="dim">Loading…</p>';
+    dlg.showModal();
+    fetch(a.href + (a.href.indexOf('?') > -1 ? '&' : '?') + 'frag=1', { credentials: 'same-origin' })
+      .then(function (r) { if (!r.ok) throw 0; return r.text(); })
+      .then(function (html) { body.innerHTML = html; })
+      .catch(function () {
+        body.innerHTML = '<p style="color:var(--stamp)">Could not load it here — ' +
+                         '<a href="' + a.href + '">open the full page →</a></p>';
+      });
+  });
+  dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });  // backdrop
+  dlg.querySelector('[data-popout-close]').addEventListener('click', function () { dlg.close(); });
+})();
+</script>
+
 <div id="toast" class="toast" hidden></div>
 <script>
 (function () {

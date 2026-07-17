@@ -124,7 +124,8 @@
           {% elif typ == 'date' %}<td class="mono">{{ row[col] | dt }}</td>
           {% else %}<td>{{ row[col] }}</td>{% endif %}
         {% endfor %}
-        {% if spec.row_link %}<td><a class="edit-lnk" href="{{ url_for(spec.row_link.endpoint, company=p.company, rowid=row.rowid, mode=mode) }}">{{ spec.row_link.label }}</a></td>{% endif %}
+        {% if spec.row_link %}<td><a class="edit-lnk" href="{{ url_for(spec.row_link.endpoint, company=p.company, rowid=row.rowid, mode=mode) }}"
+          {%- if spec.row_link.popout %} data-popout="{{ row[spec.row_link.title_col] }} {{ spec.row_link.title }} — {{ p.lastname }}, {{ p.firstname }}"{% endif %}>{{ spec.row_link.label }}</a></td>{% endif %}
         {% if spec.file %}<td>{% if row.hasfile %}<a class="edit-lnk" target="_blank" href="{{ url_for('emp_file', company=p.company, emp_id=p.emp_id, table=spec.table, rowid=row.rowid) }}">download</a>{% else %}<span class="dim">—</span>{% endif %}</td>{% endif %}
         {% if not spec.single %}
         <td class="row-actions">
