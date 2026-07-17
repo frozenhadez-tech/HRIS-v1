@@ -486,7 +486,8 @@ def load_emp_tab(tab, co, emp, p):
                        "FROM payroll WHERE company=? AND emp_id=?", co, emp),
             "loans": q("SELECT RTRIM(COALESCE(l.payitem,'')) AS payitem, RTRIM(COALESCE(i.descrip,'')) AS descrip, "
                        "RTRIM(COALESCE(l.refno,'')) AS refno, l.loanamt, l.payded, l.no_of_pay, l.no_paid, "
-                       "l.totalpaid, (l.loanamt - l.totalpaid) AS bal FROM loans l "
+                       "l.totalpaid, ((COALESCE(l.loanamt,0)+COALESCE(l.intamt,0))"
+                       "-(COALESCE(l.totalpaid,0)+COALESCE(l.totalpaidi,0))) AS bal FROM loans l "
                        "LEFT JOIN payitem i ON i.company=l.company AND i.payitem=l.payitem "
                        "WHERE l.company=? AND l.emp_id=? ORDER BY l.dateapprov DESC", co, emp),
         }

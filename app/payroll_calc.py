@@ -24,6 +24,14 @@ from payroll_engine import engine, r2
 EARN_CATS = {"0", "1", "2", "3", "5", "6", "7"}
 REG_TAX_CATS = {"0", "1", "2", "7"}       # regular compensation (subject to per-period withholding)
 
+# A loan keeps deducting only while it still has a balance. Balance is the same figure the
+# Loans screen shows: (principal + interest) − (paid + paid adjustments). Testing only
+# loanamt−totalpaid ignored intamt/totalpaidi and kept deducting loans that were already
+# fully paid. An open-ended item (provident fund / company loan) is flagged with
+# loanamt=99999, so its balance stays positive by design and it correctly keeps deducting.
+LOAN_OUTSTANDING = ("(COALESCE(l.loanamt,0)+COALESCE(l.intamt,0)) "
+                    "- (COALESCE(l.totalpaid,0)+COALESCE(l.totalpaidi,0)) > 0.005")
+
 
 def is_mwe(company, salary, paytype):
     """Minimum-wage earner: daily rate <= regional minimum daily wage → tax-exempt."""
@@ -113,7 +121,7 @@ def compute(company, emp_id, year, month, period, ot_lines=None):
                "WHERE f.company=? AND f.emp_id=?", company, emp_id)
     loans = q("SELECT l.payitem, RTRIM(COALESCE(i.descrip,l.payitem)) AS descrip, l.payded "
               "FROM loans l LEFT JOIN payitem i ON i.company=l.company AND i.payitem=l.payitem "
-              "WHERE l.company=? AND l.emp_id=? AND COALESCE(l.loanamt,0)-COALESCE(l.totalpaid,0)>0 "
+              f"WHERE l.company=? AND l.emp_id=? AND {LOAN_OUTSTANDING} "
               "AND COALESCE(l.payded,0)>0", company, emp_id)
     otr = list(_ot_for_period(company, year, month, period).get(emp_id, []))
     for ot in (ot_lines or []):
@@ -146,7 +154,7 @@ def compute_batch(company, year, month, period):
     ln = defaultdict(list)
     for r in q("SELECT RTRIM(l.emp_id) AS emp_id, l.payitem, RTRIM(COALESCE(i.descrip,l.payitem)) AS descrip, l.payded "
                "FROM loans l LEFT JOIN payitem i ON i.company=l.company AND i.payitem=l.payitem "
-               "WHERE l.company=? AND COALESCE(l.loanamt,0)-COALESCE(l.totalpaid,0)>0 AND COALESCE(l.payded,0)>0", company):
+               f"WHERE l.company=? AND {LOAN_OUTSTANDING} AND COALESCE(l.payded,0)>0", company):
         ln[r["emp_id"]].append(r)
     ot = _ot_for_period(company, year, month, period)
     rows = []

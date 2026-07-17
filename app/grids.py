@@ -177,7 +177,7 @@ GRIDS = {
         "title": "Loans", "subtitle": "loans",
         "sql": f"SELECT TOP 400 RTRIM(t.emp_id) AS emp_id, {EMPNAME}, RTRIM(COALESCE(i.descrip,t.payitem)) AS descrip, "
                "RTRIM(COALESCE(t.refno,'')) AS refno, t.loanamt, t.payded, t.no_of_pay, t.no_paid, "
-               "t.totalpaid, (t.loanamt-t.totalpaid) AS bal FROM loans t " + NAME +
+               "t.totalpaid, ((COALESCE(t.loanamt,0)+COALESCE(t.intamt,0))-(COALESCE(t.totalpaid,0)+COALESCE(t.totalpaidi,0))) AS bal FROM loans t " + NAME +
                " LEFT JOIN payitem i ON i.company=t.company AND i.payitem=t.payitem ORDER BY t.dateapprov DESC",
         "cols": [("emp_id", "Emp No", "m"), ("empname", "Name", ""), ("descrip", "Loan", ""),
                  ("refno", "Ref No", "m"), ("loanamt", "Amount", "n"), ("payded", "Per Pay", "n"),
@@ -260,7 +260,7 @@ GRIDS = {
     "rpt_loans": {
         "title": "Loans History", "company": True,
         "sql": f"SELECT RTRIM(t.emp_id) AS emp_id, {EMPNAME}, RTRIM(COALESCE(i.descrip,t.payitem)) AS descrip, "
-               "t.loanamt, t.totalpaid, (t.loanamt-t.totalpaid) AS bal, t.dateapprov FROM loans t " + NAME +
+               "t.loanamt, t.totalpaid, ((COALESCE(t.loanamt,0)+COALESCE(t.intamt,0))-(COALESCE(t.totalpaid,0)+COALESCE(t.totalpaidi,0))) AS bal, t.dateapprov FROM loans t " + NAME +
                " LEFT JOIN payitem i ON i.company=t.company AND i.payitem=t.payitem WHERE t.company=? ORDER BY t.dateapprov DESC",
         "cols": [("emp_id", "Emp No", "m"), ("empname", "Name", ""), ("descrip", "Loan", ""),
                  ("loanamt", "Amount", "n"), ("totalpaid", "Paid", "n"), ("bal", "Balance", "n"),
