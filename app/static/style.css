@@ -324,10 +324,27 @@ dl.leader .net dd { font-size: 15px; color: var(--stamp); }
 .tb-user a { color: #cdbf9b; text-decoration: none; border: 1px solid rgba(205,191,155,.4); padding: 1px 8px; border-radius: 4px; font-size: 11px; }
 .tb-user a:hover { color: #fff; border-color: #cdbf9b; }
 
+/* ── print ──
+   @page supplies the paper margin (without it the sheet printed edge-to-edge and the
+   printer's non-printable area clipped both sides). `size: auto` keeps whatever paper
+   the user picks in the print dialog. */
+@page { size: auto; margin: 14mm; }
+
 @media print {
-  .titlebar, .menubar, .actionbar, footer, .no-print, .screen-head { display: none !important; }
-  body { background: #fff; }
-  main { margin: 0; width: 100%; }
-  .paper { border: none; box-shadow: none; max-width: none; padding: 0; }
-  .toast { display: none !important; }
+  .titlebar, .menubar, .actionbar, footer, .no-print, .screen-head, .toast { display: none !important; }
+  html, body {
+    background: #fff !important; margin: 0; padding: 0;
+    width: auto; min-height: 0; display: block;   /* body is a flex column on screen */
+  }
+  main { margin: 0; padding: 0; width: auto; max-width: none; }
+  .paper {
+    background: #fff; border: none; box-shadow: none;
+    width: auto; max-width: none; margin: 0; padding: 0;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  /* keep the rules, headings and NET PAY in their intended ink */
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  a { color: inherit; text-decoration: none; }
+  tr, .pay-tot, .pay-foot { break-inside: avoid; page-break-inside: avoid; }
+  thead { display: table-header-group; }
 }
