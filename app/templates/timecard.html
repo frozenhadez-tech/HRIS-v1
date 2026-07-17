@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Time Card Inquiry · HRPayroll L98{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{{ ab.bar(back_url=url_for('dashboard', mode=mode, company=company), exit_url=url_for('dashboard', mode=mode, company=company)) }}
+{% endblock %}
+
+{% block content %}
+<style>
+.tcinq .filters { display:flex; flex-wrap:wrap; align-items:flex-end; gap:14px 20px; }
+.tcinq .fld { display:flex; flex-direction:column; gap:3px; font-size:11px; text-transform:uppercase;
+  letter-spacing:.5px; color:var(--ink-soft); }
+.tcinq .fld input, .tcinq .fld select { font-family:var(--sans); font-size:13px; padding:5px 7px;
+  border:1px solid var(--line-strong); background:var(--paper); color:var(--ink); }
+.tcinq .fld input[type=date]{ width:150px; } .tcinq .fld .short{ width:78px; } .tcinq .fld .mid{ width:110px; }
+.tcinq .retrieve{ font-family:var(--serif); font-weight:700; font-size:14px; color:var(--paper);
+  background:var(--ink); border:1px solid var(--ink); padding:7px 20px; cursor:pointer; }
+.tcinq .retrieve:hover{ filter:brightness(1.1); }
+.tc-scroll { overflow-x:auto; border:1px solid var(--line-strong); margin-top:16px; }
+table.tc { border-collapse:collapse; font-size:12px; white-space:nowrap; min-width:100%; }
+table.tc th, table.tc td { border:1px solid var(--line); padding:2px 6px; text-align:center; }
+table.tc thead th { position:sticky; top:0; background:var(--paper-deep); font-family:var(--sans); font-weight:600;
+  font-size:10.5px; text-transform:uppercase; letter-spacing:.3px; color:var(--ink-soft); line-height:1.15; }
+table.tc td.name, table.tc td.emp { text-align:left; white-space:nowrap; }
+table.tc td.t { font-family:var(--mono); }
+table.tc td.n { text-align:right; font-family:var(--mono); }
+table.tc td.rem { text-align:left; color:var(--ink-soft); }
+table.tc tr:nth-child(even) td { background:rgba(0,0,0,.015); }
+table.tc .rest { color:var(--stamp); font-weight:600; }
+table.tc .warn { color:var(--stamp); }
+table.tc input[type=checkbox]{ width:13px; height:13px; margin:0; vertical-align:middle; }
+table.tc tfoot td { border-top:2px solid var(--ink); font-weight:700; background:var(--paper-deep); }
+table.tc td.logs a, table.tc td.logs span { font-family:var(--mono); font-size:11px; color:var(--brass); }
+.tc-meta { margin-top:14px; display:flex; gap:14px; align-items:center; flex-wrap:wrap; font-size:12px; color:var(--ink-soft); }
+</style>
+
+<div class="screen-head">
+  <h1>Time Card Inquiry</h1>
+  <p class="crumb">Daily time cards · filter by date range, pay group, employee &amp; shift · {{ comp_map.get(company, '') }}</p>
+</div>
+
+<section class="panel tcinq">
+  <form class="filters" method="get">
+    <input type="hidden" name="mode" value="{{ mode }}"><input type="hidden" name="company" value="{{ company }}">
+    <label class="fld">Date From <input type="date" name="dfrom" value="{{ dfrom }}"></label>
+    <label class="fld">To <input type="date" name="dto" value="{{ dto }}"></label>
+    <label class="fld">Pay Group <input class="short" type="text" name="paygroup" value="{{ paygroup }}" maxlength="3"></label>
+    <label class="fld">Emp. ID <input class="mid" type="text" name="emp_id" value="{{ emp_id }}" maxlength="6" placeholder="all"></label>
+    <label class="fld">Needs recalculation only?
+      <select name="recalc"><option value="N" {{ 'selected' if recalc!='Y' }}>No</option><option value="Y" {{ 'selected' if recalc=='Y' }}>Yes</option></select></label>
+    <label class="fld">Shift <input class="short" type="text" name="shift" value="{{ shift }}" maxlength="2"></label>
+    <button class="retrieve" type="submit">Retrieve</button>
+  </form>
+
+  <div class="tc-scroll">
+  <table class="tc">
+    <thead><tr>
+      <th>#</th><th>Emp Id</th><th>Employee Name</th><th>Date</th><th>Day</th><th>Shift</th>
+      <th>Day<br>Off</th><th>CWW<br>Off</th>
+      <th>In 1</th><th>Out 1</th><th>In 2</th><th>Out 2</th><th>In 3</th><th>Out 3</th><th>In 4</th><th>Out 4</th>
+      <th>Total<br>Hours</th><th>Reg<br>Hours</th><th>NP<br>Hrs</th><th>Tardy<br>Hrs</th>
+      <th>Abs/<br>Undtm</th><th>Absent<br>Charged To</th><th>OT<br>Hrs</th><th>Apv</th><th>Remarks</th><th>RunSheet</th>
+    </tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td class="dim">{{ loop.index }}</td>
+        <td class="emp mono">{{ r.emp_id if r.show_emp else '' }}</td>
+        <td class="name">{{ r.empname if r.show_emp else '' }}</td>
+        <td class="t {{ 'rest' if r.weekend or r.dayoff }}">{{ r.date }}</td>
+        <td class="{{ 'rest' if r.weekend or r.dayoff }}">{{ r.dow }}</td>
+        <td class="mono">{{ r.shift }}</td>
+        <td>{% if r.dayoff %}<input type="checkbox" checked disabled>{% else %}<input type="checkbox" disabled>{% endif %}</td>
+        <td>{% if r.cww %}<input type="checkbox" checked disabled>{% else %}<input type="checkbox" disabled>{% endif %}</td>
+        <td class="t">{{ r.in1 }}</td><td class="t">{{ r.out1 }}</td>
+        <td class="t">{{ r.in2 }}</td><td class="t">{{ r.out2 }}</td>
+        <td class="t">{{ r.in3 }}</td><td class="t">{{ r.out3 }}</td>
+        <td class="t">{{ r.in4 }}</td><td class="t">{{ r.out4 }}</td>
+        <td class="n">{{ r.total }}</td><td class="n">{{ r.reg }}</td><td class="n">{{ r.np }}</td>
+        <td class="n warn">{{ r.tardy }}</td><td class="n warn">{{ r.absundtm }}</td>
+        <td class="mono">{{ r.chargeto }}</td><td class="n">{{ r.ot }}</td>
+        <td>{% if r.approvot %}<input type="checkbox" {{ 'checked' if r.approvot=='Y' }} disabled>{% endif %}</td>
+        <td class="rem">{{ r.remarks }}</td>
+        <td class="logs">{% if r.runsheetno %}<span>{{ r.runsheetno }}</span>{% elif r.approvot %}<span>Logs</span>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="26" class="empty" style="text-align:center;padding:22px">No time cards match these filters.</td></tr>
+    {% endfor %}
+    </tbody>
+    {% if rows %}
+    <tfoot><tr>
+      <td colspan="16" style="text-align:right">Total Hours&nbsp;»</td>
+      <td class="n">{{ '%.2f' % total }}</td><td colspan="9"></td>
+    </tr></tfoot>
+    {% endif %}
+  </table>
+  </div>
+
+  <div class="tc-meta">
+    <span><strong>{{ count }}</strong> row{{ '' if count==1 else 's' }}</span>
+    <span class="rule"></span>
+    <span>{{ dfrom }} → {{ dto }}{% if emp_id %} · Emp {{ emp_id }}{% endif %}{% if paygroup %} · Pay Group {{ paygroup }}{% endif %}{% if shift %} · Shift {{ shift }}{% endif %}{% if recalc=='Y' %} · needs-recalc only{% endif %}</span>
+    {% if truncated %}<span class="rule"></span><span class="warn" style="color:var(--stamp)">⚠ showing first {{ cap }} rows — narrow the filters</span>{% endif %}
+  </div>
+</section>
+{% endblock %}

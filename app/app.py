@@ -847,6 +847,99 @@ def payroll_post():
     return redirect(url_for("payroll_compute_all", company=company, year=year, month=month, period=period, mode=mode))
 
 
+@app.route("/timecard")
+def timecard():
+    """Time Card Inquiry — filter daily time-card rows by date range, pay group,
+    employee and shift (mirrors the old app's Time Card Inquiry screen)."""
+    company = sel_company()
+    mode = request.args.get("mode", "PY")
+
+    def hhmm(v):
+        if v is None:
+            return ""
+        v = int(v)
+        return "" if v <= 0 else f"{v // 100:02d}:{v % 100:02d}"
+
+    def numf(v, dp=2):
+        if v is None:
+            return ""
+        f = float(v)
+        return "" if abs(f) < 0.005 else f"{f:.{dp}f}"
+
+    # default window = the latest month with data for this company (ignore corrupt future dates)
+    mx = one("SELECT MAX(trdate) AS d FROM timecard WHERE company=? AND trdate < '2100-01-01'", company)
+    dmax = mx["d"].date() if mx and mx["d"] else datetime.date.today()
+    dfrom = (request.args.get("dfrom") or dmax.replace(day=1).isoformat()).strip()
+    dto = (request.args.get("dto") or dmax.isoformat()).strip()
+    paygroup = (request.args.get("paygroup") or "").strip()
+    emp_id = (request.args.get("emp_id") or "").strip()
+    shift = (request.args.get("shift") or "").strip()
+    recalc = "Y" if request.args.get("recalc") == "Y" else "N"
+
+    where = ["t.company=?", "t.trdate>=?", "t.trdate<=?"]
+    params = [company, dfrom, dto]
+    if emp_id:
+        where.append("t.emp_id=?"); params.append(emp_id)
+    if paygroup:
+        where.append("RTRIM(COALESCE(t.paygroup,''))=?"); params.append(paygroup)
+    if shift:
+        where.append("RTRIM(COALESCE(t.shift,''))=?"); params.append(shift)
+    if recalc == "Y":
+        where.append("COALESCE(t.recalcflg,'')='Y'")
+
+    CAP = 3000
+    raw = q(
+        "SELECT TOP " + str(CAP + 1) + " t.emp_id, RTRIM(p.lastname)||', '||RTRIM(p.firstname)"
+        "  ||CASE WHEN COALESCE(RTRIM(p.middlename),'')<>'' THEN ' '||LEFT(RTRIM(p.middlename),1) ELSE '' END AS empname, "
+        "  t.trdate, RTRIM(COALESCE(t.shift,'')) AS shift, COALESCE(t.dayoff,'') AS dayoff, "
+        "  COALESCE(t.cwwdoff,'') AS cwwdoff, t.timein1, t.timeout1, t.timein2, t.timeout2, "
+        "  t.timein3, t.timeout3, t.timein4, t.timeout4, t.tlhours, t.reghrs, t.nphrs, t.tardy, "
+        "  t.undertime, t.othrs, COALESCE(t.approvot,'') AS approvot, RTRIM(COALESCE(t.runsheetno,'')) AS runsheetno, "
+        "  COALESCE(t.recalcflg,'') AS recalcflg, RTRIM(COALESCE(t.paygroup,'')) AS paygroup, "
+        "  RTRIM(COALESCE(pi.shortdesc, t.payitem1)) AS chargeto "
+        "FROM timecard t JOIN personnel p ON p.company=t.company AND p.emp_id=t.emp_id "
+        "LEFT JOIN payitem pi ON pi.company=t.company AND pi.payitem=t.payitem1 "
+        "WHERE " + " AND ".join(where) +
+        " ORDER BY p.lastname, p.firstname, t.emp_id, t.trdate", *params)
+
+    truncated = len(raw) > CAP
+    raw = raw[:CAP]
+    DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    rows, total, prev = [], 0.0, None
+    for r in raw:
+        d = r["trdate"]
+        dayoff = str(r["dayoff"]).strip() in ("1", "Y")
+        cww = str(r["cwwdoff"]).strip() in ("1", "Y")
+        absent = bool(r["undertime"] and float(r["undertime"]) > 0 and not r["timein1"])
+        parts = []
+        if absent:
+            parts.append("Absent")
+        else:
+            if r["tardy"] and float(r["tardy"]) > 0:
+                parts.append("Tardy")
+            if r["othrs"] and float(r["othrs"]) > 0:
+                parts.append("Overtime")
+        total += float(r["tlhours"] or 0)
+        rows.append({
+            "show_emp": r["emp_id"] != prev, "emp_id": r["emp_id"], "empname": r["empname"],
+            "date": d.strftime("%m/%d/%Y"), "dow": DOW[d.weekday()], "weekend": d.weekday() >= 5,
+            "shift": r["shift"], "dayoff": dayoff, "cww": cww,
+            "in1": hhmm(r["timein1"]), "out1": hhmm(r["timeout1"]), "in2": hhmm(r["timein2"]),
+            "out2": hhmm(r["timeout2"]), "in3": hhmm(r["timein3"]), "out3": hhmm(r["timeout3"]),
+            "in4": hhmm(r["timein4"]), "out4": hhmm(r["timeout4"]),
+            "total": numf(r["tlhours"]), "reg": numf(r["reghrs"]), "np": numf(r["nphrs"]),
+            "tardy": numf(float(r["tardy"] or 0) / 60.0), "absundtm": numf(r["undertime"]),
+            "chargeto": r["chargeto"] or "", "ot": numf(r["othrs"]),
+            "approvot": (r["approvot"] or "").strip(), "runsheetno": r["runsheetno"],
+            "recalc": (r["recalcflg"] or "").strip() == "Y", "remarks": "/".join(parts),
+        })
+        prev = r["emp_id"]
+
+    return render_template("timecard.html", rows=rows, total=total, count=len(rows),
+                           dfrom=dfrom, dto=dto, paygroup=paygroup, emp_id=emp_id,
+                           shift=shift, recalc=recalc, truncated=truncated, cap=CAP)
+
+
 @app.route("/engine/verify")
 def engine_verify():
     company = sel_company()
