@@ -24,7 +24,9 @@
   <div class="register-meta">
     <span><strong>{{ rows|length }}</strong> employees</span><span class="rule"></span>
     <span>Net total <strong>₱ {{ totals.net | peso }}</strong></span>
-    {% if existing %}<span class="rule"></span><span style="color:var(--stamp)">⚠ {{ existing }} rows already stored for this period</span>{% endif %}
+    {% if ot_count %}<span class="rule"></span><span>{{ ot_count }} OT entr{{ 'y' if ot_count==1 else 'ies' }} included</span>{% endif %}
+    {% if status and status.closed %}<span class="rule"></span><span class="chip off">● CLOSED{% if status.closed_by %} by {{ status.closed_by }}{% endif %}</span>
+    {% elif existing %}<span class="rule"></span><span style="color:var(--stamp)">⚠ {{ existing }} rows already stored</span>{% endif %}
   </div>
 
   <table class="ledger wide">
@@ -53,11 +55,24 @@
         <td class="num strong">{{ totals.net | peso }}</td><td></td></tr>
     </tfoot>
   </table>
-  <p class="note">Draft — a preview using the verified formulas (basic, OT, statutory, tax). Overtime and ad-hoc
-    earnings aren't included here; use each employee's <em>payslip →</em> to add overtime.</p>
+  <p class="note">Draft — a preview using the verified formulas (basic, overtime, statutory, tax).
+    Overtime comes from <a href="{{ url_for('payroll_ot', mode=mode, company=company, year=year, month=month, period=period) }}">Overtime Entry</a>;
+    open an employee's <em>payslip →</em> for the line-by-line breakdown.</p>
 
   {% if rows %}
   <div class="post-bar">
+    {% if status and status.closed %}
+    <form method="post" action="{{ url_for('payroll_reopen', mode=mode, company=company) }}"
+          onsubmit="return confirm({{ ('Reopen ' ~ year ~ '-' ~ ('%02d' % month) ~ ' Period ' ~ period ~ '? This clears the closed flag so the period can be re-posted. The stored payroll rows are kept until you re-post.') | tojson }})">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <input type="hidden" name="mode" value="{{ mode }}"><input type="hidden" name="company" value="{{ company }}">
+      <input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ month }}">
+      <input type="hidden" name="period" value="{{ period }}">
+      <span class="post-label">This period is <strong>closed</strong>{% if status.closed_at %} ({{ status.closed_at }}){% endif %}.
+        Reopen it to make changes and re-post.</span>
+      <button type="submit" class="btn-post">Reopen period</button>
+    </form>
+    {% else %}
     <form method="post" action="{{ url_for('payroll_post', mode=mode, company=company) }}"
           onsubmit="return confirm({{ ('Re-post will DELETE the ' ~ existing ~ ' existing rows for ' ~ year ~ '-' ~ ('%02d' % month) ~ ' Period ' ~ period ~ ' and replace them with this computed draft. Continue?') | tojson if existing else ('Post ' ~ (rows|length) ~ ' employees to ' ~ year ~ '-' ~ ('%02d' % month) ~ ' Period ' ~ period ~ ' as real payroll?') | tojson }})">
       <input type="hidden" name="csrf" value="{{ csrf_token() }}">
@@ -69,6 +84,7 @@
         flowing into payslips, registers &amp; government forms.</span>
       <button type="submit" class="btn-post {{ 'danger' if existing }}">{{ 'Re-post (overwrite)' if existing else 'Post & Close' }}</button>
     </form>
+    {% endif %}
   </div>
   {% endif %}
 </section>

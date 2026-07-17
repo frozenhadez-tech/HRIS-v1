@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Overtime Entry · HRPayroll L98{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{{ ab.bar(back_url=url_for('dashboard', mode=mode, company=company), exit_url=url_for('dashboard', mode=mode, company=company)) }}
+{% endblock %}
+
+{% block content %}
+<div class="screen-head">
+  <h1>Overtime Entry</h1>
+  <p class="crumb">Enter per-employee overtime hours for a period — fed into the payroll calculation.</p>
+</div>
+
+<section class="panel">
+  <form class="filters" method="get">
+    <input type="hidden" name="mode" value="{{ mode }}"><input type="hidden" name="company" value="{{ company }}">
+    <select name="year">{% for y in periods|map(attribute='payyear')|unique %}<option value="{{ y }}" {{ 'selected' if year==y }}>{{ y }}</option>{% endfor %}</select>
+    <select name="month">{% for m in range(1,13) %}<option value="{{ m }}" {{ 'selected' if month==m }}>{{ '%02d' % m }}</option>{% endfor %}</select>
+    <select name="period"><option value="1" {{ 'selected' if period=='1' }}>Period 1</option><option value="2" {{ 'selected' if period=='2' }}>Period 2</option></select>
+    <button type="submit">Load</button>
+  </form>
+
+  <form method="post" action="{{ url_for('payroll_ot', mode=mode, company=company) }}" class="filters" style="align-items:flex-end">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ month }}"><input type="hidden" name="period" value="{{ period }}">
+    <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-soft)">Employee
+      <select name="emp_id" style="min-width:240px">{% for e in emps %}<option value="{{ e.emp_id }}">{{ e.emp_id }} · {{ e.empname }}</option>{% endfor %}</select>
+    </label>
+    <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-soft)">OT type
+      <select name="payitem">{% for it in ot_items %}<option value="{{ it.payitem }}">{{ it.payitem }} · {{ it.descrip }}</option>{% endfor %}</select>
+    </label>
+    <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-soft)">Hours
+      <input type="number" step="0.5" name="hours" placeholder="hrs" style="width:90px">
+    </label>
+    <button type="submit">+ Add overtime</button>
+  </form>
+
+  <table class="ledger wide">
+    <thead><tr><th>Emp No</th><th>Name</th><th>OT type</th><th class="num">Hours</th><th class="actions-col"></th></tr></thead>
+    <tbody>
+    {% for r in entries %}
+      <tr>
+        <td class="mono">{{ r.emp_id }}</td><td>{{ r.empname }}</td>
+        <td class="mono">{{ r.payitem }} · {{ r.descrip }}</td><td class="num">{{ '%.2f' % r.hours }}</td>
+        <td class="row-actions">
+          <form method="post" action="{{ url_for('payroll_ot_delete', mode=mode, company=company) }}" onsubmit="return confirm('Remove this overtime entry?')">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="rowid" value="{{ r.rowid }}">
+            <input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ month }}"><input type="hidden" name="period" value="{{ period }}">
+            <button type="submit" class="del-lnk">delete</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty">No overtime entered for {{ year }}-{{ '%02d' % month }} Period {{ period }}.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="note">{{ entries|length }} entr{{ 'y' if entries|length==1 else 'ies' }} · these hours are included when you compute or post this period.
+    <a href="{{ url_for('payroll_compute_all', mode=mode, company=company, year=year, month=month, period=period) }}">Go to the computed register →</a></p>
+</section>
+{% endblock %}

@@ -45,7 +45,7 @@ PAYROLL_MENU = [
         ("Define Pay Period", "s:payperiod"),
         ("Post Attendance Transactions", "r:post_attend"),
         ("—", ""),
-        ("Overtime Entry", "r:ot_entry"),
+        ("Overtime Entry", "e:payroll_ot"),
         ("Leaves/Absences Entry", "s:leavetran"),
         ("Additional Earnings/Deductions Entry", "r:addl_entry"),
         ("—", ""),

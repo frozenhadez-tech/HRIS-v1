@@ -83,8 +83,22 @@ def _core(company, emp_id, salary, paytype, period, fixallow, fixded, loans, ot_
             "er": {"sss": sss["er"], "ec": sss["ec"], "philhealth": ph["er"], "hdmf": hd["er"]}}
 
 
+def _ot_for_period(company, year, month, period):
+    """Persisted per-employee overtime entries for a period -> {emp_id: [ot dicts]}."""
+    from collections import defaultdict
+    m = defaultdict(list)
+    for r in q("SELECT RTRIM(o.emp_id) AS emp_id, o.payitem, RTRIM(COALESCE(i.descrip,o.payitem)) AS descrip, "
+               "o.hours, i.mult, i.multm, RTRIM(COALESCE(i.category,'7')) AS cat, RTRIM(COALESCE(i.taxscheme,'3')) AS ts "
+               "FROM ot_entry o LEFT JOIN payitem i ON i.company=o.company AND i.payitem=o.payitem "
+               "WHERE o.company=? AND o.payyear=? AND o.paymonth=? AND o.payperiod=?", company, year, month, period):
+        m[r["emp_id"]].append({"payitem": r["payitem"].strip(), "descrip": r["descrip"], "hours": float(r["hours"] or 0),
+                               "mult": r["mult"], "multm": r["multm"], "cat": r["cat"], "ts": r["ts"]})
+    return m
+
+
 def compute(company, emp_id, year, month, period, ot_lines=None):
-    """Compute one employee's payslip for a period. ot_lines: optional [{payitem, hours}]."""
+    """Compute one employee's payslip for a period. ot_lines: optional [{payitem, hours}]
+    added on top of the employee's persisted OT entries for the period."""
     eng = engine()
     pr = one("SELECT salary, RTRIM(COALESCE(paytype,'')) AS paytype FROM payroll WHERE company=? AND emp_id=?",
              company, emp_id)
@@ -101,7 +115,7 @@ def compute(company, emp_id, year, month, period, ot_lines=None):
               "FROM loans l LEFT JOIN payitem i ON i.company=l.company AND i.payitem=l.payitem "
               "WHERE l.company=? AND l.emp_id=? AND COALESCE(l.loanamt,0)-COALESCE(l.totalpaid,0)>0 "
               "AND COALESCE(l.payded,0)>0", company, emp_id)
-    otr = []
+    otr = list(_ot_for_period(company, year, month, period).get(emp_id, []))
     for ot in (ot_lines or []):
         pit = one("SELECT RTRIM(COALESCE(descrip,payitem)) AS descrip, mult, multm, RTRIM(COALESCE(category,'7')) AS cat, "
                   "RTRIM(COALESCE(taxscheme,'3')) AS ts FROM payitem WHERE company=? AND payitem=?", company, ot["payitem"])
@@ -134,12 +148,13 @@ def compute_batch(company, year, month, period):
                "FROM loans l LEFT JOIN payitem i ON i.company=l.company AND i.payitem=l.payitem "
                "WHERE l.company=? AND COALESCE(l.loanamt,0)-COALESCE(l.totalpaid,0)>0 AND COALESCE(l.payded,0)>0", company):
         ln[r["emp_id"]].append(r)
+    ot = _ot_for_period(company, year, month, period)
     rows = []
     tot = {"gross": 0.0, "taxable": 0.0, "tax": 0.0, "total_ded": 0.0, "net": 0.0}
     for e in emps:
         emp = e["emp_id"]
         r = _core(company, emp, float(e["salary"] or 0), e["paytype"] or "M", period,
-                  fa.get(emp, []), fd.get(emp, []), ln.get(emp, []), [], eng)
+                  fa.get(emp, []), fd.get(emp, []), ln.get(emp, []), ot.get(emp, []), eng)
         r["empname"] = e["empname"]
         rows.append(r)
         for k in tot:
@@ -180,10 +195,13 @@ def validate(company, year, month, period, tol=1.0):
 
 
 def period_status(company, year, month, period):
-    """How many paytranh rows / employees already exist for a period (posting guard)."""
+    """Existing rows/employees + closed status for a period (posting guard + UI)."""
     r = one("SELECT COUNT(*) AS rows, COUNT(DISTINCT emp_id) AS emps FROM paytranh "
             "WHERE company=? AND payyear=? AND paymonth=? AND payperiod=?", company, year, month, period)
-    return {"rows": r["rows"], "emps": r["emps"]}
+    cl = one("SELECT closed_by, closed_at FROM period_close "
+             "WHERE company=? AND payyear=? AND paymonth=? AND payperiod=?", company, year, month, period)
+    return {"rows": r["rows"], "emps": r["emps"], "closed": bool(cl),
+            "closed_by": (cl["closed_by"] if cl else None), "closed_at": (cl["closed_at"] if cl else None)}
 
 
 def post_period(company, year, month, period, user, overwrite=False):
@@ -220,5 +238,13 @@ def post_period(company, year, month, period, user, overwrite=False):
                               payitem, paycat, hrs, amt, user, now))
         cur.executemany(f"INSERT INTO paytranh ({cols}) VALUES {ph}", batch)
         n = len(batch)
+        # mark the period closed (own status table) + best-effort legacy payperiod flag
+        cur.execute("INSERT INTO period_close (company,payyear,paymonth,payperiod,closed_by,closed_at) "
+                    "VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (company,payyear,paymonth,payperiod) "
+                    "DO UPDATE SET closed_by=EXCLUDED.closed_by, closed_at=EXCLUDED.closed_at",
+                    (company, year, month, period, user, now))
+        cur.execute("UPDATE payperiod SET payclose='9', changeby=%s, changedate=%s "
+                    "WHERE company=%s AND payyear=%s AND paymonth=%s AND payperiod=%s",
+                    (user, now, company, year, month, period))
         c.commit()
     return {"employees": len(rows), "lines": n, "net": totals["net"]}

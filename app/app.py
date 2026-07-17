@@ -750,6 +750,63 @@ def payroll_compute():
                            ot_hours={it["payitem"]: request.args.get("ot_" + it["payitem"], "") for it in ot_items})
 
 
+@app.route("/payroll/ot", methods=["GET", "POST"])
+def payroll_ot():
+    company = sel_company()
+    mode = request.args.get("mode", "PY")
+    periods = q("SELECT DISTINCT TOP 40 payyear, paymonth, payperiod FROM paytranh WHERE company=? "
+                "ORDER BY payyear DESC, paymonth DESC, payperiod DESC", company)
+    d0 = periods[0] if periods else {"payyear": 2025, "paymonth": 8, "payperiod": "1"}
+    year = int(request.values.get("year", type=int) or d0["payyear"])
+    month = int(request.values.get("month", type=int) or d0["paymonth"])
+    period = (request.values.get("period") or str(d0["payperiod"])).strip()
+    if request.method == "POST":
+        emp_id = (request.form.get("emp_id") or "").strip()
+        payitem = (request.form.get("payitem") or "").strip()
+        hours = request.form.get("hours", type=float)
+        if emp_id and payitem and hours:
+            db.execute("INSERT INTO ot_entry (company,payyear,paymonth,payperiod,emp_id,payitem,hours,changeby,changedate) "
+                       "VALUES (?,?,?,?,?,?,?,?,?)", company, year, month, period, emp_id, payitem, hours,
+                       session.get("user", {}).get("id", ""), datetime.datetime.now())
+            flash(f"Overtime added for {emp_id}.", "ok")
+        else:
+            flash("Employee, OT type and hours are all required.", "error")
+        return redirect(url_for("payroll_ot", company=company, mode=mode, year=year, month=month, period=period))
+    entries = q("SELECT o.rowid, RTRIM(o.emp_id) AS emp_id, RTRIM(p.lastname)||', '||RTRIM(p.firstname) AS empname, "
+                "RTRIM(o.payitem) AS payitem, RTRIM(COALESCE(i.descrip,o.payitem)) AS descrip, o.hours "
+                "FROM ot_entry o LEFT JOIN personnel p ON p.company=o.company AND p.emp_id=o.emp_id "
+                "LEFT JOIN payitem i ON i.company=o.company AND i.payitem=o.payitem "
+                "WHERE o.company=? AND o.payyear=? AND o.paymonth=? AND o.payperiod=? "
+                "ORDER BY p.lastname, o.payitem", company, year, month, period)
+    emps = q("SELECT RTRIM(emp_id) AS emp_id, RTRIM(lastname)||', '||RTRIM(firstname) AS empname "
+             "FROM personnel WHERE company=? AND empsts<>'X' ORDER BY lastname, firstname", company)
+    ot_items = q("SELECT RTRIM(payitem) AS payitem, RTRIM(COALESCE(descrip,payitem)) AS descrip FROM payitem "
+                 "WHERE company=? AND category='7' AND RTRIM(COALESCE(unmsr,''))='H' ORDER BY payitem", company)
+    return render_template("payroll_ot.html", periods=periods, year=year, month=month, period=period,
+                           entries=entries, emps=emps, ot_items=ot_items)
+
+
+@app.route("/payroll/ot/delete", methods=["POST"])
+def payroll_ot_delete():
+    company = sel_company()
+    db.execute("DELETE FROM ot_entry WHERE company=? AND rowid=?", company, request.form.get("rowid"))
+    flash("Overtime entry removed.", "ok")
+    return redirect(url_for("payroll_ot", company=company, mode=request.form.get("mode", "PY"),
+                            year=request.form.get("year"), month=request.form.get("month"), period=request.form.get("period")))
+
+
+@app.route("/payroll/reopen", methods=["POST"])
+def payroll_reopen():
+    company = sel_company()
+    year = int(request.form.get("year") or 0); month = int(request.form.get("month") or 0)
+    period = (request.form.get("period") or "1").strip()
+    db.execute("DELETE FROM period_close WHERE company=? AND payyear=? AND paymonth=? AND payperiod=?",
+               company, year, month, period)
+    flash(f"Reopened {year}-{month:02d} Period {period}. You can re-post it now.", "ok")
+    return redirect(url_for("payroll_compute_all", company=company, mode=request.form.get("mode", "PY"),
+                            year=year, month=month, period=period))
+
+
 @app.route("/payroll/compute_all")
 def payroll_compute_all():
     import payroll_calc as pc
@@ -761,10 +818,11 @@ def payroll_compute_all():
     month = int(request.args.get("month", type=int) or d0["paymonth"])
     period = (request.args.get("period") or str(d0["payperiod"])).strip()
     rows, totals = pc.compute_batch(company, year, month, period)
-    existing = one("SELECT COUNT(*) AS n FROM paytranh WHERE company=? AND payyear=? AND paymonth=? AND payperiod=?",
+    status = pc.period_status(company, year, month, period)
+    ot_count = one("SELECT COUNT(*) AS n FROM ot_entry WHERE company=? AND payyear=? AND paymonth=? AND payperiod=?",
                    company, year, month, period)["n"]
     return render_template("payroll_compute_all.html", periods=periods, year=year, month=month, period=period,
-                           rows=rows, totals=totals, existing=existing)
+                           rows=rows, totals=totals, existing=status["rows"], status=status, ot_count=ot_count)
 
 
 @app.route("/payroll/post", methods=["POST"])
@@ -777,13 +835,15 @@ def payroll_post():
     period = (request.form.get("period") or "1").strip()
     overwrite = request.form.get("overwrite") == "1"
     st = pc.period_status(company, year, month, period)
-    if st["rows"] and not overwrite:
+    if st["closed"]:
+        flash(f"{year}-{month:02d} Period {period} is CLOSED (by {st['closed_by']}). Reopen it before re-posting.", "error")
+    elif st["rows"] and not overwrite:
         flash(f"{year}-{month:02d} Period {period} already has {st['rows']:,} rows. "
               f"Use “Re-post (overwrite)” to replace them.", "error")
     else:
         res = pc.post_period(company, year, month, period, session.get("user", {}).get("id", ""), overwrite)
         flash(f"Posted {res['lines']:,} lines for {res['employees']} employees to {year}-{month:02d} "
-              f"Period {period} (net ₱{res['net']:,.2f}). It now appears in payslips, registers and forms.", "ok")
+              f"Period {period} (net ₱{res['net']:,.2f}) and marked it CLOSED. Now in payslips, registers and forms.", "ok")
     return redirect(url_for("payroll_compute_all", company=company, year=year, month=month, period=period, mode=mode))
 
 
