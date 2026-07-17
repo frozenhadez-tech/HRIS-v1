@@ -80,10 +80,12 @@
 {% elif tab == 'employment' %}
   <h2>Current assignment</h2>
   <dl class="leader wide2">
-    <div><dt>Position</dt><dd>{{ job.descrip if job else p.jobcode or '—' }}</dd></div>
-    <div><dt>Division / Dept / Section</dt><dd class="mono">{{ [p.division, p.dept, p.section] | select | join(' / ') or '—' }}</dd></div>
-    <div><dt>Reports to</dt><dd class="mono">{{ p.reports_to or '—' }}</dd></div>
-    <div><dt>Shift</dt><dd>{{ p.shift or '—' }}</dd></div>
+    <div><dt>Position</dt><dd>{{ job.descrip if job else '—' }}{% if p.jobcode %} <span class="dim mono">({{ p.jobcode }})</span>{% endif %}</dd></div>
+    <div><dt>Division</dt><dd>{{ asg.division or '—' }}{% if p.division %} <span class="dim mono">({{ p.division }})</span>{% endif %}</dd></div>
+    <div><dt>Department</dt><dd>{{ asg.dept or '—' }}{% if p.dept %} <span class="dim mono">({{ p.dept }})</span>{% endif %}</dd></div>
+    <div><dt>Section</dt><dd>{{ asg.section or '—' }}{% if p.section %} <span class="dim mono">({{ p.section }})</span>{% endif %}</dd></div>
+    <div><dt>Reports to</dt><dd>{{ asg.reports_to or '—' }}{% if p.reports_to %} <span class="dim mono">({{ p.reports_to }})</span>{% endif %}</dd></div>
+    <div><dt>Shift</dt><dd>{{ asg.shift or '—' }}{% if p.shift %} <span class="dim mono">({{ p.shift }})</span>{% endif %}</dd></div>
   </dl>
   <h2>Rate changes</h2>
   {{ ui.simple_table(d.movements.rate, [('effdate','Effective','d'),('oldrate','Old','n'),('newrate','New','n'),('op','Old Type','c'),('np','New Type','c'),('reason','Reason','')]) }}

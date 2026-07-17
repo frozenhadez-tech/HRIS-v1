@@ -394,7 +394,20 @@ def employee(company, emp_id):
     data = load_emp_tab(tab, company, emp_id, p)
     job = one("SELECT RTRIM(descrip) AS descrip FROM jobcode WHERE company=? AND code=?",
               company, p["jobcode"])
-    return render_template("employee.html", p=p, job=job, tab=tab, tabs=EMP_TABS, d=data)
+    div = one("SELECT RTRIM(COALESCE(descrip,'')) AS d FROM division WHERE company=? AND RTRIM(code)=?",
+              company, p["division"]) if p["division"] else None
+    dept = one("SELECT RTRIM(COALESCE(descrip,'')) AS d FROM department WHERE company=? AND RTRIM(division)=? AND RTRIM(code)=?",
+               company, p["division"], p["dept"]) if p["dept"] else None
+    sec = one("SELECT RTRIM(COALESCE(descrip,'')) AS d FROM section WHERE company=? AND RTRIM(division)=? AND RTRIM(dept)=? AND RTRIM(code)=?",
+              company, p["division"], p["dept"], p["section"]) if p["section"] else None
+    shf = one("SELECT RTRIM(COALESCE(shiftdesc,'')) AS d FROM shifttable WHERE company=? AND RTRIM(shift)=?",
+              company, p["shift"]) if p["shift"] else None
+    rep = one("SELECT RTRIM(lastname)||', '||RTRIM(COALESCE(firstname,'')) AS d FROM personnel WHERE company=? AND RTRIM(emp_id)=?",
+              company, p["reports_to"]) if p["reports_to"] else None
+    asg = {"division": div["d"] if div else "", "dept": dept["d"] if dept else "",
+           "section": sec["d"] if sec else "", "shift": shf["d"] if shf else "",
+           "reports_to": rep["d"] if rep else ""}
+    return render_template("employee.html", p=p, job=job, asg=asg, tab=tab, tabs=EMP_TABS, d=data)
 
 
 def load_emp_tab(tab, co, emp, p):
@@ -513,6 +526,30 @@ EMP_FIELDS = [
 DATE_FIELDS = {"birthdate", "datehired", "datereg"}
 
 
+def _assignment_lookups(company):
+    """Option lists (code + description) for the Assignment dropdowns, scoped to a company.
+    The stored value stays the code — only the label shows the name (like the Status field)."""
+    def dedupe(rows):                       # dept/section codes can repeat across divisions
+        seen = {}
+        for r in rows:
+            seen.setdefault(r["code"], r["descrip"])
+        return [{"code": k, "descrip": v} for k, v in seen.items()]
+    return {
+        "divisions": q("SELECT RTRIM(code) AS code, RTRIM(COALESCE(descrip,'')) AS descrip "
+                       "FROM division WHERE company=? ORDER BY code", company),
+        "departments": dedupe(q("SELECT RTRIM(code) AS code, RTRIM(COALESCE(descrip,'')) AS descrip "
+                                "FROM department WHERE company=? ORDER BY code", company)),
+        "sections": dedupe(q("SELECT RTRIM(code) AS code, RTRIM(COALESCE(descrip,'')) AS descrip "
+                             "FROM section WHERE company=? ORDER BY code", company)),
+        "positions": q("SELECT RTRIM(code) AS code, RTRIM(COALESCE(descrip,'')) AS descrip "
+                       "FROM jobcode WHERE company=? ORDER BY descrip", company),
+        "shifts": q("SELECT RTRIM(shift) AS code, RTRIM(COALESCE(shiftdesc,'')) AS descrip "
+                    "FROM shifttable WHERE company=? ORDER BY shift", company),
+        "employees": q("SELECT RTRIM(emp_id) AS code, RTRIM(lastname)||', '||RTRIM(COALESCE(firstname,'')) AS descrip "
+                       "FROM personnel WHERE company=? AND empsts<>'X' ORDER BY lastname, firstname", company),
+    }
+
+
 @app.route("/employee/new", methods=["GET", "POST"])
 def employee_new():
     mode = request.args.get("mode", "PY")
@@ -541,7 +578,8 @@ def employee_new():
         for e in errors:
             flash(e, "error")
     return render_template("employee_new.html", est=est, form=request.form, is_edit=False,
-                           heading="Add Employee", action_url=url_for("employee_new", mode=mode))
+                           heading="Add Employee", action_url=url_for("employee_new", mode=mode),
+                           **_assignment_lookups(request.form.get("company") or sel_company()))
 
 
 @app.route("/employee/<company>/<emp_id>/edit", methods=["GET", "POST"])
@@ -577,7 +615,8 @@ def employee_edit(company, emp_id):
     return render_template("employee_new.html", est=est, form=f, is_edit=True,
                            heading="Edit Employee",
                            action_url=url_for("employee_edit", company=company, emp_id=emp_id, mode=mode),
-                           back_url=url_for("employee", company=company, emp_id=emp_id, mode=mode))
+                           back_url=url_for("employee", company=company, emp_id=emp_id, mode=mode),
+                           **_assignment_lookups(company))
 
 
 @app.route("/employee/<company>/<emp_id>/delete", methods=["POST"])

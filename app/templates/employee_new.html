@@ -10,6 +10,16 @@
 {% block content %}
 {% set f = form %}
 {% set is_edit = is_edit | default(false) %}
+{# code-backed dropdown: stores the code, shows "code — name" (falls back to a raw
+   option if the current value isn't in the list, so no data is lost on save) #}
+{% macro codesel(name, cur, opts, blank='—') %}
+  <select name="{{ name }}">
+    <option value="">{{ blank }}</option>
+    {% set codes = opts | map(attribute='code') | list %}
+    {% for o in opts %}<option value="{{ o.code }}" {{ 'selected' if cur==o.code }}>{{ o.code }}{{ ' — ' ~ o.descrip if o.descrip }}</option>{% endfor %}
+    {% if cur and cur not in codes %}<option value="{{ cur }}" selected>{{ cur }} — (unlisted)</option>{% endif %}
+  </select>
+{% endmacro %}
 <div class="screen-head">
   <a class="back" href="{{ back_url or url_for('employees', mode=mode, company=company) }}">‹ Back</a>
   <h1>{{ heading }}</h1>
@@ -94,10 +104,10 @@
   <section class="panel">
     <h2>Assignment</h2>
     <div class="form-grid">
-      <label>Division<input type="text" name="division" value="{{ f.get('division','') }}"></label>
-      <label>Department<input type="text" name="dept" value="{{ f.get('dept','') }}"></label>
-      <label>Section<input type="text" name="section" value="{{ f.get('section','') }}"></label>
-      <label>Position code<input type="text" name="jobcode" value="{{ f.get('jobcode','') }}"></label>
+      <label>Division{{ codesel('division', f.get('division',''), divisions) }}</label>
+      <label>Department{{ codesel('dept', f.get('dept',''), departments) }}</label>
+      <label>Section{{ codesel('section', f.get('section',''), sections) }}</label>
+      <label>Position{{ codesel('jobcode', f.get('jobcode',''), positions) }}</label>
       <label>Status
         <select name="empsts">
           <option value="">—</option>
@@ -106,8 +116,8 @@
       </label>
       <label>Date hired<input type="date" name="datehired" value="{{ f.get('datehired','') }}"></label>
       <label>Date regularized<input type="date" name="datereg" value="{{ f.get('datereg','') }}"></label>
-      <label>Reports to<input type="text" name="reports_to" value="{{ f.get('reports_to','') }}"></label>
-      <label>Shift<input type="text" name="shift" value="{{ f.get('shift','') }}"></label>
+      <label>Reports to{{ codesel('reports_to', f.get('reports_to',''), employees, blank='— none —') }}</label>
+      <label>Shift{{ codesel('shift', f.get('shift',''), shifts) }}</label>
     </div>
   </section>
 
