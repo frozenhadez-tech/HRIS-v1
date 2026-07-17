@@ -36,7 +36,18 @@
       {% endif %}
     </div>
     {% endfor %}
+    {% if rep.lines and rep.lines.rate is not none %}
+    <div class="scorecard {{ 'good' if rep.lines.rate >= 95 else ('mid' if rep.lines.rate >= 70 else 'bad') }}">
+      <span class="sc-name">OT / hours lines</span>
+      <span class="sc-rate">{{ '%.0f' % rep.lines.rate }}%</span>
+      <span class="sc-sub">{{ rep.lines.match }} / {{ rep.lines.n }} match</span>
+    </div>
+    {% endif %}
   </div>
+  <p class="note">The <strong>OT / hours lines</strong> card recomputes every hours-based pay line
+    (overtime, tardiness, undertime, leave-without-pay) as <code>hours × hourly rate × multiplier</code>
+    and matches it against the original — where hourly rate = daily ÷ {{ 8 }}, daily = salary ÷ base-days,
+    and the multiplier is the pay item's <code>multm</code> for monthly-paid / <code>mult</code> for daily-paid staff.</p>
 
   {% if rep.mismatches %}
   <h2>Divergences ({{ rep.mismatches | length }})</h2>

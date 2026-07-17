@@ -718,8 +718,11 @@ import payroll_engine as pe  # noqa: E402
 @app.route("/calculator")
 def calculator():
     salary = request.args.get("salary", type=float)
-    result = pe.engine().compute_monthly(salary) if salary else None
-    return render_template("calculator.html", salary=salary, r=result)
+    paytype = (request.args.get("paytype") or "M").strip()
+    eng = pe.engine()
+    result = eng.compute_monthly(salary) if salary else None
+    rates = eng.ot_rates(salary, paytype, sel_company()) if salary else None
+    return render_template("calculator.html", salary=salary, r=result, rates=rates, paytype=paytype)
 
 
 @app.route("/engine/verify")

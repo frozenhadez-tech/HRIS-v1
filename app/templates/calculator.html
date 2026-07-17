@@ -17,6 +17,10 @@
     <input type="hidden" name="mode" value="{{ mode }}">
     <input type="hidden" name="company" value="{{ company }}">
     <input type="number" step="0.01" name="salary" value="{{ salary or '' }}" placeholder="Monthly salary (₱)…" autofocus>
+    <select name="paytype">
+      <option value="M" {{ 'selected' if paytype == 'M' }}>Monthly-paid</option>
+      <option value="D" {{ 'selected' if paytype == 'D' }}>Daily-paid</option>
+    </select>
     <button type="submit">Compute</button>
   </form>
 
@@ -48,6 +52,21 @@
       <p class="note">Semi-monthly TRAIN table; taxable = salary − employee statutory. Excludes OT, allowances, loans, and fixed items, which vary per period.</p>
     </div>
   </div>
+
+  {% if rates %}
+  <h2>Hourly &amp; overtime rates <span class="dim" style="font-weight:400;font-size:12px">({{ 'monthly' if paytype=='M' else 'daily' }}-paid)</span></h2>
+  <table class="ledger">
+    <thead><tr><th>Basis</th><th class="num">Rate / hour (₱)</th></tr></thead>
+    <tbody>
+      <tr><td>Hourly rate <span class="dim">(daily ÷ 8)</span></td><td class="num strong">{{ rates.hourly | peso }}</td></tr>
+      <tr><td>Regular OT <span class="dim">(×1.25)</span></td><td class="num">{{ rates.regular_ot | peso }}</td></tr>
+      <tr><td>Rest-day OT <span class="dim">(×1.30)</span></td><td class="num">{{ rates.restday_ot | peso }}</td></tr>
+      <tr><td>Legal-holiday <span class="dim">(×2.00)</span></td><td class="num">{{ rates.legal_holiday | peso }}</td></tr>
+      <tr><td>Night premium <span class="dim">(×0.10)</span></td><td class="num">{{ rates.night_prem | peso }}</td></tr>
+    </tbody>
+  </table>
+  <p class="note">Verified against the original app to the centavo: a pay line = hours × hourly rate × the item's multiplier.</p>
+  {% endif %}
   {% else %}
   <p class="note">Enter a monthly salary to compute SSS, PhilHealth, Pag-IBIG, withholding tax and estimated net.</p>
   {% endif %}

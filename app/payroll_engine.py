@@ -22,9 +22,13 @@ def r2(x):
 
 
 class Engine:
-    """Loads the statutory tables once and computes contributions/tax."""
+    """Loads the statutory tables once and computes contributions/tax + pay lines."""
 
     def __init__(self):
+        # per-company rate parameters (baseday, hours/day) for the hourly-rate formula
+        self.coparam = {r["company"]: {"baseday": float(r["baseday"] or 26.083),
+                                       "hrspday": float(r["hourspday"] or 8)}
+                        for r in _rows("SELECT company, baseday, hourspday FROM company")}
         self.sss_tbl = sorted(
             ({"lo": float(r["frgross"]), "hi": float(r["togross"]),
               "msc": float(r["credit"]), "ee": float(r["sssee"]),
@@ -67,6 +71,25 @@ class Engine:
     def sss(self, salary):
         b = self.sss_ee(salary)
         return {"ee": b["ee"], "er": b["er"], "ec": b["ec"], "msc": b["msc"]}
+
+    # ── rate-based pay lines (verified against the original app to the centavo) ──
+    def hourly_rate(self, salary, paytype, company="001"):
+        """Daily rate = salary (daily-paid) or salary/baseday (monthly); hourly = daily/hours-per-day."""
+        p = self.coparam.get(company, {"baseday": 26.083, "hrspday": 8})
+        daily = salary if paytype == "D" else (salary / p["baseday"])
+        return daily / p["hrspday"]
+
+    def line_amount(self, hours, salary, paytype, mult, multm, company="001"):
+        """A pay line = hours * hourly_rate * multiplier. Monthly-paid uses `multm`
+        (premium only); daily-paid uses `mult`. Matches the original app exactly."""
+        m = multm if paytype == "M" else mult
+        return r2(hours * self.hourly_rate(salary, paytype, company) * m)
+
+    def ot_rates(self, salary, paytype, company="001"):
+        """Common OT hourly rates for display (Regular 1.25, Restday 1.30, …)."""
+        hr = self.hourly_rate(salary, paytype, company)
+        return {"hourly": r2(hr), "regular_ot": r2(hr * 1.25), "restday_ot": r2(hr * 1.30),
+                "legal_holiday": r2(hr * 2.00), "night_prem": r2(hr * 0.10)}
 
     def withholding_tax(self, taxable, freq="S"):
         t = self.tax.get(freq)
@@ -161,8 +184,34 @@ def engine_regression(company, year, month, period, tol=0.05):
         n = len(v)
         summary[k] = {"n": n, "match": sum(v), "rate": (sum(v) / n * 100) if n else None}
     mism = [d for d in details if d.get("mismatch")]
+    lines = verify_lines(company, year, month, period)
     return {"company": company, "year": year, "month": month, "period": period,
-            "employees": len(rows), "summary": summary, "mismatches": mism[:40]}
+            "employees": len(rows), "summary": summary, "mismatches": mism[:40], "lines": lines}
+
+
+def verify_lines(company, year, month, period, tol=0.05):
+    """Recompute every hours-based (unmsr='H') pay line = hours*hourly_rate*multiplier
+    and compare to the stored amount — proves the OT / attendance-adjustment formula."""
+    eng = engine()
+    rows = _rows(
+        "SELECT h.payitem, h.trhours, h.tramount, i.mult, i.multm, "
+        "COALESCE(pr.salary,0) AS salary, RTRIM(COALESCE(pr.paytype,'')) AS paytype "
+        "FROM paytranh h JOIN payitem i ON i.company=h.company AND i.payitem=h.payitem "
+        "JOIN payroll pr ON pr.company=h.company AND pr.emp_id=h.emp_id "
+        "WHERE h.company=? AND h.payyear=? AND h.paymonth=? AND h.payperiod=? "
+        "AND RTRIM(COALESCE(i.unmsr,''))='H' AND h.trhours <> 0", company, year, month, period)
+    ok = n = 0
+    for r in rows:
+        sal = float(r["salary"] or 0)
+        m = float(r["multm"] if r["paytype"] == "M" else r["mult"] or 0)
+        if not sal or m == 0:
+            continue
+        n += 1
+        exp = eng.line_amount(float(r["trhours"]), sal, r["paytype"], float(r["mult"] or 0),
+                              float(r["multm"] or 0), company)
+        if abs(exp - float(r["tramount"])) <= tol:
+            ok += 1
+    return {"n": n, "match": ok, "rate": (ok / n * 100) if n else None}
 
 
 if __name__ == "__main__":
