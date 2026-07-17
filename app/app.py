@@ -725,6 +725,31 @@ def calculator():
     return render_template("calculator.html", salary=salary, r=result, rates=rates, paytype=paytype)
 
 
+@app.route("/payroll/compute")
+def payroll_compute():
+    import payroll_calc as pc
+    company = sel_company()
+    periods = q("SELECT DISTINCT TOP 40 payyear, paymonth, payperiod FROM paytranh WHERE company=? "
+                "ORDER BY payyear DESC, paymonth DESC, payperiod DESC", company)
+    d0 = periods[0] if periods else {"payyear": 2025, "paymonth": 8, "payperiod": "1"}
+    year = int(request.args.get("year", type=int) or d0["payyear"])
+    month = int(request.args.get("month", type=int) or d0["paymonth"])
+    period = (request.args.get("period") or str(d0["payperiod"])).strip()
+    emp_id = (request.args.get("emp_id") or "").strip()
+    ot_items = q("SELECT RTRIM(payitem) AS payitem, RTRIM(COALESCE(descrip,payitem)) AS descrip FROM payitem "
+                 "WHERE company=? AND category='7' AND RTRIM(COALESCE(unmsr,''))='H' ORDER BY payitem", company)[:6]
+    ot_lines = [{"payitem": it["payitem"], "hours": request.args.get("ot_" + it["payitem"], type=float)}
+                for it in ot_items if request.args.get("ot_" + it["payitem"], type=float)]
+    result = pc.compute(company, emp_id, year, month, period, ot_lines) if emp_id else None
+    emps = q("SELECT RTRIM(emp_id) AS emp_id, RTRIM(lastname)||', '||RTRIM(firstname) AS empname "
+             "FROM personnel WHERE company=? AND empsts<>'X' ORDER BY lastname, firstname", company)
+    p = one("SELECT RTRIM(lastname) AS lastname, RTRIM(firstname) AS firstname, RTRIM(COALESCE(jobcode,'')) AS jobcode "
+            "FROM personnel WHERE company=? AND emp_id=?", company, emp_id) if emp_id else None
+    return render_template("payroll_compute.html", periods=periods, year=year, month=month, period=period,
+                           emp_id=emp_id, emps=emps, ot_items=ot_items, result=result, p=p,
+                           ot_hours={it["payitem"]: request.args.get("ot_" + it["payitem"], "") for it in ot_items})
+
+
 @app.route("/engine/verify")
 def engine_verify():
     company = sel_company()

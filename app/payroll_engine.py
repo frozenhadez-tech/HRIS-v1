@@ -25,10 +25,11 @@ class Engine:
     """Loads the statutory tables once and computes contributions/tax + pay lines."""
 
     def __init__(self):
-        # per-company rate parameters (baseday, hours/day) for the hourly-rate formula
+        # per-company rate parameters (baseday, hours/day, min daily wage) for the formulas
         self.coparam = {r["company"]: {"baseday": float(r["baseday"] or 26.083),
-                                       "hrspday": float(r["hourspday"] or 8)}
-                        for r in _rows("SELECT company, baseday, hourspday FROM company")}
+                                       "hrspday": float(r["hourspday"] or 8),
+                                       "mindaily": float(r["mindlyrate"] or 0)}
+                        for r in _rows("SELECT company, baseday, hourspday, mindlyrate FROM company")}
         self.sss_tbl = sorted(
             ({"lo": float(r["frgross"]), "hi": float(r["togross"]),
               "msc": float(r["credit"]), "ee": float(r["sssee"]),
