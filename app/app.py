@@ -173,6 +173,82 @@ def screen(key):
     )
 
 
+def _cast(v, typ):
+    v = (v or "").strip()
+    if v == "":
+        return None
+    if typ == "num":
+        try:
+            return float(v.replace(",", ""))
+        except ValueError:
+            return None
+    if typ == "int":
+        try:
+            return int(float(v))
+        except ValueError:
+            return None
+    return v  # text / date (ISO string; Postgres casts)
+
+
+@app.route("/s/<key>/row", methods=["GET", "POST"])
+def grid_row(key):
+    g = GRIDS.get(key)
+    if not g or not g.get("edit"):
+        abort(404)
+    e, company = g["edit"], sel_company()
+    scoped = bool(g.get("company"))
+    user = session.get("user", {}).get("id", "")
+    if request.method == "POST":
+        data = {c: _cast(request.form.get(c), t) for c, _, t in e["fields"]}
+        if request.form.get("_update") == "1":
+            where = " AND ".join(f"{c}=?" for c in e["pk"])
+            wvals = [company if c == "company" else request.form.get("pk_" + c) for c in e["pk"]]
+            setcols = [c for c, _, _ in e["fields"] if c not in e["pk"]]
+            sets = ", ".join(f"{c}=?" for c in setcols) + ", changeby=?, changedate=?"
+            svals = [data[c] for c in setcols] + [user, datetime.datetime.now()]
+            db.execute(f"UPDATE {e['table']} SET {sets} WHERE {where}", *(svals + wvals))
+            flash("Record updated.", "ok")
+        else:
+            cols = [c for c, _, _ in e["fields"]]
+            vals = [data[c] for c in cols]
+            if scoped and "company" not in cols:
+                cols, vals = ["company"] + cols, [company] + vals
+            cols += ["changeby", "changedate"]
+            vals += [user, datetime.datetime.now()]
+            ph = ",".join("?" for _ in cols)
+            try:
+                db.execute(f"INSERT INTO {e['table']} ({','.join(cols)}) VALUES ({ph})", *vals)
+                flash("Record added.", "ok")
+            except Exception as ex:
+                flash("Could not add — " + (str(ex).split("\n")[0][:120]), "error")
+        return redirect(url_for("screen", key=key, mode=request.args.get("mode", "PY"), company=company))
+    editing = any(("pk_" + c) in request.args for c in e["pk"])
+    f = {}
+    if editing:
+        where = " AND ".join(f"{c}=?" for c in e["pk"])
+        wvals = [company if c == "company" else request.args.get("pk_" + c) for c in e["pk"]]
+        row = one(f"SELECT * FROM {e['table']} WHERE {where}", *wvals)
+        if row:
+            for c, _, t in e["fields"]:
+                v = row.get(c)
+                f[c] = v.strftime("%Y-%m-%d") if (t == "date" and v) else ("" if v is None else (v.strip() if isinstance(v, str) else v))
+            f["_pk"] = {c: (company if c == "company" else request.args.get("pk_" + c)) for c in e["pk"]}
+    return render_template("grid_row.html", g=g, e=e, key=key, f=f, editing=editing)
+
+
+@app.route("/s/<key>/delete", methods=["POST"])
+def grid_delete(key):
+    g = GRIDS.get(key)
+    if not g or not g.get("edit"):
+        abort(404)
+    e, company = g["edit"], sel_company()
+    where = " AND ".join(f"{c}=?" for c in e["pk"])
+    wvals = [company if c == "company" else request.form.get("pk_" + c) for c in e["pk"]]
+    db.execute(f"DELETE FROM {e['table']} WHERE {where}", *wvals)
+    flash("Record deleted.", "ok")
+    return redirect(url_for("screen", key=key, mode=request.args.get("mode", "PY"), company=company))
+
+
 from reports import REPORTS  # noqa: E402
 
 
@@ -450,8 +526,44 @@ def employee_new():
             return redirect(url_for("employee", company=company, emp_id=emp_id, mode=mode))
         for e in errors:
             flash(e, "error")
-    return render_template("employee_new.html", est=est, form=request.form, fields=EMP_FIELDS,
-                           date_fields=DATE_FIELDS)
+    return render_template("employee_new.html", est=est, form=request.form, is_edit=False,
+                           heading="Add Employee", action_url=url_for("employee_new", mode=mode))
+
+
+@app.route("/employee/<company>/<emp_id>/edit", methods=["GET", "POST"])
+def employee_edit(company, emp_id):
+    mode = request.args.get("mode", "PY")
+    est = q("SELECT RTRIM(fldcode) AS code, RTRIM(descrip) AS descrip "
+            "FROM tablecode1 WHERE tblcode='EST' ORDER BY fldcode")
+    if not one("SELECT 1 AS x FROM personnel WHERE company=? AND emp_id=?", company, emp_id):
+        abort(404)
+    if request.method == "POST":
+        if not (request.form.get("lastname") or "").strip():
+            flash("Last name is required.", "error")
+        else:
+            sets, vals = [], []
+            for f, _ in EMP_FIELDS:
+                v = (request.form.get(f) or "").strip()
+                sets.append(f"{f}=?")
+                vals.append((v or None) if f in DATE_FIELDS else v)
+            vals += [company, emp_id]
+            db.execute(f"UPDATE personnel SET {','.join(sets)} WHERE company=? AND emp_id=?", *vals)
+            flash(f"Employee {emp_id} updated.", "ok")
+            return redirect(url_for("employee", company=company, emp_id=emp_id, mode=mode))
+        f = request.form
+    else:
+        cols = "company, emp_id, " + ", ".join(c for c, _ in EMP_FIELDS)
+        row = one(f"SELECT {cols} FROM personnel WHERE company=? AND emp_id=?", company, emp_id)
+        f = {}
+        for k, v in row.items():
+            if k in DATE_FIELDS and v:
+                f[k] = v.strftime("%Y-%m-%d")
+            else:
+                f[k] = "" if v is None else (v.strip() if isinstance(v, str) else v)
+    return render_template("employee_new.html", est=est, form=f, is_edit=True,
+                           heading="Edit Employee",
+                           action_url=url_for("employee_edit", company=company, emp_id=emp_id, mode=mode),
+                           back_url=url_for("employee", company=company, emp_id=emp_id, mode=mode))
 
 
 @app.route("/employee/<company>/<emp_id>/delete", methods=["POST"])

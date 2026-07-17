@@ -353,3 +353,52 @@ GRIDS = {
                  ("chktype", "Type", ""), ("findings", "Findings", "")],
     },
 }
+
+
+# ── editable reference tables: {grid key: {table, pk, fields[(col,label,type)]}} ──
+# type: text | num | int | date.  company-scoped grids inject company from the selector.
+EDITABLE = {
+    "payitem": {"table": "payitem", "pk": ["company", "payitem"], "fields": [
+        ("payitem", "Item code", "text"), ("descrip", "Description", "text"),
+        ("category", "Category (0-9)", "text"), ("b4tax", "Before tax (Y/N)", "text"),
+        ("priority", "Priority", "int"), ("freq", "Frequency", "text"), ("taxscheme", "Tax scheme", "text")]},
+    "ssstable": {"table": "ssstable", "pk": ["frgross", "togross"], "fields": [
+        ("frgross", "From gross", "num"), ("togross", "To gross", "num"), ("credit", "MSC / credit", "num"),
+        ("ssser", "SSS employer", "num"), ("sssee", "SSS employee", "num"), ("eccer", "EC employer", "num")]},
+    "phtable": {"table": "phtable", "pk": ["frgross"], "fields": [
+        ("bracket", "Bracket", "int"), ("frgross", "From", "num"), ("togross", "To", "num"),
+        ("salarybase", "Salary base", "num"), ("mcrer", "ER share", "num"), ("mcree", "EE share", "num")]},
+    "taxtable": {"table": "taxtable", "pk": ["xtype", "xunit"], "fields": [
+        ("xtype", "Type (S/M/D/W)", "text"), ("xunit", "Row (Z/S/M/FIXAM/PRCNT)", "text"),
+        ("xdesc", "Description", "text"), ("exemption", "Exemption", "num"),
+        ("range01", "Col 1", "num"), ("range02", "Col 2", "num"), ("range03", "Col 3", "num"),
+        ("range04", "Col 4", "num"), ("range05", "Col 5", "num")]},
+    "holidays": {"table": "holidays", "pk": ["hyear", "hdate"], "fields": [
+        ("hyear", "Year", "int"), ("hdate", "Date", "date"), ("hflag", "Type", "text"), ("hdesc", "Holiday", "text")]},
+    "banks": {"table": "banks", "pk": ["company", "code"], "fields": [
+        ("code", "Code", "text"), ("bankname", "Bank name", "text"),
+        ("branchname", "Branch", "text"), ("acctformat", "Account format", "text")]},
+    "otrates": {"table": "otrates", "pk": ["company", "otcode", "payitem"], "fields": [
+        ("otcode", "OT code", "text"), ("payitem", "Pay item", "text"),
+        ("otrate", "OT rate", "num"), ("nprate", "Night-prem rate", "num")]},
+    "shifttable": {"table": "shifttable", "pk": ["company", "shift"], "fields": [
+        ("shift", "Shift", "text"), ("shiftdesc", "Description", "text"),
+        ("stdhours", "Std hours", "num"), ("stdot", "Std OT", "num"), ("flextime", "Flex (Y/N)", "text")]},
+    "jobcode": {"table": "jobcode", "pk": ["company", "code"], "fields": [
+        ("code", "Code", "text"), ("descrip", "Position title", "text"), ("category", "Category", "text"),
+        ("jobgrade", "Grade", "text"), ("min_salary", "Min salary", "num"), ("max_salary", "Max salary", "num")]},
+    "division": {"table": "division", "pk": ["company", "code"], "fields": [
+        ("code", "Code", "text"), ("descrip", "Division", "text"), ("head", "Head (emp no)", "text")]},
+    "department": {"table": "department", "pk": ["company", "division", "code"], "fields": [
+        ("division", "Division", "text"), ("code", "Code", "text"),
+        ("descrip", "Department", "text"), ("head", "Head (emp no)", "text")]},
+    "section": {"table": "section", "pk": ["company", "division", "dept", "code"], "fields": [
+        ("division", "Division", "text"), ("dept", "Department", "text"), ("code", "Code", "text"),
+        ("descrip", "Section", "text"), ("head", "Head (emp no)", "text")]},
+    "tablecodes": {"table": "tablecode1", "pk": ["tblcode", "fldcode"], "fields": [
+        ("tblcode", "Table code", "text"), ("fldcode", "Field code", "text"),
+        ("descrip", "Description", "text"), ("vardata", "Value", "text"), ("applicat", "App", "text")]},
+}
+for _k, _meta in EDITABLE.items():
+    if _k in GRIDS:
+        GRIDS[_k]["edit"] = _meta

@@ -8,6 +8,7 @@
           exit_url=url_for('dashboard', mode=mode, company=company),
           section=cur, sections=tabs, emp=p,
           add_url=url_for('employee_new', mode=mode, company=company),
+          edit_url=url_for('employee_edit', company=p.company, emp_id=p.emp_id, mode=mode),
           del_url=url_for('employee_delete', company=p.company, emp_id=p.emp_id, mode=mode),
           del_name=p.lastname ~ ', ' ~ p.firstname) }}
 {% endblock %}

@@ -4,20 +4,24 @@
 {% block actionbar %}
 {% import "_actionbar.html" as ab with context %}
 {{ ab.bar(back_url=url_for('dashboard', mode=mode, company=company),
-          exit_url=url_for('dashboard', mode=mode, company=company)) }}
+          exit_url=url_for('dashboard', mode=mode, company=company),
+          add_url=(url_for('grid_row', key=key, mode=mode, company=company) if g.edit else '')) }}
 {% endblock %}
 
 {% block content %}
+{% set pkcols = (g.edit.pk | reject('equalto','company') | list) if g.edit else [] %}
 
 <div class="screen-head">
   <h1>{{ title }}</h1>
   <p class="crumb">{% if subtitle %}{{ subtitle }} · {% endif %}{{ comp_map.get(company, '') }}</p>
+  {% if g.edit %}<a class="add-btn" href="{{ url_for('grid_row', key=key, mode=mode, company=company) }}">+ Add record</a>{% endif %}
 </div>
 
 <section class="panel">
   <table class="ledger wide">
     <thead>
-      <tr>{% for f, label, a in g.cols %}<th class="{{ 'num' if a in ('n','i') }}">{{ label }}</th>{% endfor %}</tr>
+      <tr>{% for f, label, a in g.cols %}<th class="{{ 'num' if a in ('n','i') }}">{{ label }}</th>{% endfor %}
+        {% if g.edit %}<th class="actions-col"></th>{% endif %}</tr>
     </thead>
     <tbody>
     {% for row in rows %}
@@ -30,13 +34,23 @@
           {% elif a == 'c' %}<td class="center mono">{{ row[f] }}</td>
           {% else %}<td>{{ row[f] }}</td>{% endif %}
         {% endfor %}
+        {% if g.edit %}
+        <td class="row-actions">
+          <a class="edit-lnk" href="{{ url_for('grid_row', key=key, mode=mode, company=company) }}{% for c in pkcols %}&pk_{{ c }}={{ row[c] | urlencode }}{% endfor %}">edit</a>
+          <form method="post" action="{{ url_for('grid_delete', key=key, mode=mode, company=company) }}" onsubmit="return confirm('Delete this record?')">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+            {% for c in pkcols %}<input type="hidden" name="pk_{{ c }}" value="{{ row[c] }}">{% endfor %}
+            <button type="submit" class="del-lnk">delete</button>
+          </form>
+        </td>
+        {% endif %}
       </tr>
     {% else %}
-      <tr><td colspan="{{ g.cols | length }}" class="empty">No records.</td></tr>
+      <tr><td colspan="{{ g.cols | length + (1 if g.edit else 0) }}" class="empty">No records.</td></tr>
     {% endfor %}
     </tbody>
   </table>
-  <p class="note">{{ rows | length }} row{{ 's' if rows | length != 1 }}{{ ' (capped)' if rows | length >= 300 }} · source table shown in subtitle.</p>
+  <p class="note">{{ rows | length }} row{{ 's' if rows | length != 1 }}{{ ' (capped)' if rows | length >= 300 }}{% if g.edit %} · editable{% endif %}.</p>
 </section>
 
 {% endblock %}

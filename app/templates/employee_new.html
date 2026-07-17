@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Add Employee · HRPayroll L98{% endblock %}
+{% block title %}{{ heading }} · HRPayroll L98{% endblock %}
 
 {% block actionbar %}
 {% import "_actionbar.html" as ab with context %}
@@ -9,24 +9,35 @@
 
 {% block content %}
 {% set f = form %}
+{% set is_edit = is_edit | default(false) %}
 <div class="screen-head">
-  <a class="back" href="{{ url_for('employees', mode=mode, company=company) }}">‹ Employee list</a>
-  <h1>Add Employee</h1>
+  <a class="back" href="{{ back_url or url_for('employees', mode=mode, company=company) }}">‹ Back</a>
+  <h1>{{ heading }}</h1>
 </div>
 
-<form method="post" action="{{ url_for('employee_new', mode=mode) }}" class="entry-form" autocomplete="off">
+<form method="post" action="{{ action_url }}" class="entry-form" autocomplete="off">
   <input type="hidden" name="csrf" value="{{ csrf_token() }}">
 
   <section class="panel">
     <h2>Identity</h2>
     <div class="form-grid">
       <label class="req">Company
+        {% if is_edit %}
+        <input type="text" value="{{ f.get('company') }} — {{ comp_map.get(f.get('company'),'') }}" readonly class="ro">
+        <input type="hidden" name="company" value="{{ f.get('company') }}">
+        {% else %}
         <select name="company">
           {% for c in companies %}<option value="{{ c.company }}" {{ 'selected' if (f.get('company') or company)==c.company }}>{{ c.company }} — {{ c.companynam }}</option>{% endfor %}
         </select>
+        {% endif %}
       </label>
       <label class="req">Employee No.
+        {% if is_edit %}
+        <input type="text" value="{{ f.get('emp_id','') }}" readonly class="ro">
+        <input type="hidden" name="emp_id" value="{{ f.get('emp_id','') }}">
+        {% else %}
         <input type="text" name="emp_id" value="{{ f.get('emp_id','') }}" required placeholder="e.g. 000500" spellcheck="false">
+        {% endif %}
       </label>
     </div>
   </section>

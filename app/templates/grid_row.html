@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if editing else 'Add' }} · {{ g.title }}{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{{ ab.bar(back_url=url_for('screen', key=key, mode=mode, company=company),
+          exit_url=url_for('dashboard', mode=mode, company=company)) }}
+{% endblock %}
+
+{% block content %}
+<div class="screen-head">
+  <a class="back" href="{{ url_for('screen', key=key, mode=mode, company=company) }}">‹ {{ g.title }}</a>
+  <h1>{{ 'Edit' if editing else 'Add' }} — {{ g.title }}</h1>
+</div>
+
+<form method="post" action="{{ url_for('grid_row', key=key, mode=mode, company=company) }}" class="entry-form" autocomplete="off">
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+  {% if editing %}
+    <input type="hidden" name="_update" value="1">
+    {% for c in e.pk %}{% if c != 'company' %}<input type="hidden" name="pk_{{ c }}" value="{{ f._pk[c] }}">{% endif %}{% endfor %}
+  {% endif %}
+
+  <section class="panel">
+    {% if g.edit and g.company %}<p class="note" style="margin:0 0 12px">Company: <strong>{{ comp_map.get(company, company) }}</strong></p>{% endif %}
+    <div class="form-grid">
+      {% for col, label, typ in e.fields %}
+      {% set ro = editing and col in e.pk %}
+      <label class="{{ 'req' if (col in e.pk and not editing) }}">{{ label }}
+        {% if typ == 'date' %}
+          <input type="date" name="{{ col }}" value="{{ f.get(col,'') }}" {% if ro %}readonly class="ro"{% endif %}>
+        {% elif typ in ('num','int') %}
+          <input type="number" step="{{ '1' if typ == 'int' else 'any' }}" name="{{ col }}" value="{{ f.get(col,'') }}" {% if ro %}readonly class="ro"{% endif %}>
+        {% else %}
+          <input type="text" name="{{ col }}" value="{{ f.get(col,'') }}" {% if ro %}readonly class="ro"{% endif %} spellcheck="false">
+        {% endif %}
+      </label>
+      {% endfor %}
+    </div>
+  </section>
+
+  <div class="form-actions">
+    <button type="submit" class="btn-save">{{ 'Save changes' if editing else 'Add record' }}</button>
+    <a class="btn-cancel" href="{{ url_for('screen', key=key, mode=mode, company=company) }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

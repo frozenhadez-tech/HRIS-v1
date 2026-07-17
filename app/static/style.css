@@ -117,12 +117,25 @@ tr.selectable.sel td { background: var(--hl) !important; box-shadow: inset 3px 0
 .form-grid label.req::after { content: " *"; color: var(--stamp); }
 .form-grid input, .form-grid select { font-family: var(--sans); font-size: 13.5px; color: var(--ink); background: #fffdf6; border: 1px solid var(--line-strong); padding: 7px 10px; }
 .form-grid input:focus, .form-grid select:focus { outline: 2px solid var(--brass); outline-offset: -1px; }
+.form-grid input.ro { background: var(--paper-deep); color: var(--ink-soft); border-style: dashed; }
 .form-actions { display: flex; align-items: center; gap: 14px; margin: 4px 0 30px; }
 .btn-save { font-family: var(--serif); font-weight: 700; font-size: 15px; color: var(--paper); background: var(--green); border: 1px solid var(--green); box-shadow: 3px 3px 0 var(--brass); padding: 10px 26px; cursor: pointer; }
 .btn-save:hover { filter: brightness(1.08); }
 .btn-save:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--brass); }
 .btn-cancel { color: var(--ink-soft); text-decoration: none; font-size: 13px; }
 .btn-cancel:hover { color: var(--stamp); text-decoration: underline; }
+
+/* editable grid actions */
+.add-btn { margin-left: auto; font-family: var(--serif); font-weight: 700; font-size: 13px; color: var(--paper);
+  background: var(--green); border: 1px solid var(--green); box-shadow: 2px 2px 0 var(--brass); padding: 6px 15px; text-decoration: none; }
+.add-btn:hover { filter: brightness(1.08); }
+th.actions-col { width: 1%; }
+td.row-actions { white-space: nowrap; text-align: right; display: flex; gap: 10px; justify-content: flex-end; align-items: center; }
+.edit-lnk { font-family: var(--mono); font-size: 11px; color: var(--hr); text-decoration: none; }
+.edit-lnk:hover { text-decoration: underline; }
+.del-lnk { font-family: var(--mono); font-size: 11px; color: var(--stamp); background: none; border: none; cursor: pointer; padding: 0; }
+.del-lnk:hover { text-decoration: underline; }
+td.row-actions form { display: inline; margin: 0; }
 .ab-spacer { flex: 1; }
 .ab-sec { position: relative; }
 .ab-secbtn { border-color: var(--line-strong); background: #fffdf6; }
