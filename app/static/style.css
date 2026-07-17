@@ -338,6 +338,15 @@ table.lp td.y, table.lp td.m, table.lp td.d { font-family: var(--mono); }
 table.lp tr:hover td { background: var(--hl); }
 table.lp tfoot td { border-top: 2px solid var(--ink); font-weight: 700; background: var(--paper-deep); }
 
+/* ── page controls ── */
+.pager { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
+.pager .pg { font-family: var(--mono); font-size: 11.5px; padding: 3px 9px; border: 1px solid var(--line-strong);
+  color: var(--ink); text-decoration: none; background: var(--paper); }
+.pager a.pg:hover { background: var(--hl); border-color: var(--ink); }
+.pager .pg.on { background: var(--ink); border-color: var(--ink); color: var(--paper); font-weight: 600; }
+.pager .pg.off { color: var(--line-strong); border-color: var(--line); background: none; }
+.pager .pg-info { font-size: 11.5px; color: var(--ink-soft); margin-left: 8px; }
+
 /* ── loan add / change form (own page + pop-out) ── */
 .loanf .lf-box { border: 1px solid var(--line-strong); padding: 10px 14px 14px; margin: 0 0 14px; }
 .loanf .lf-box legend { font-family: var(--serif); font-weight: 700; font-size: 12.5px; padding: 0 6px; }

@@ -49,7 +49,7 @@ SECTIONS = {
     # + paid adjustments, Balance = the difference. loanamt 99999 flags an open-ended fund,
     # which has no fixed amount — nulled so it renders blank. `fields` drives the edit form.
     "loans": [
-        {"table": "loans", "label": "Loans", "order": "dateapprov DESC",
+        {"table": "loans", "label": "Loans", "order": "dateapprov DESC", "page_size": 25,
          "list_sql":
              "SELECT l.rowid, RTRIM(COALESCE(i.descrip, l.payitem)) AS descrip, l.dateapprov, "
              "RTRIM(COALESCE(l.refno,'')) AS ltype, "

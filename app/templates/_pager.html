@@ -1,0 +1,23 @@
+{# Page controls. `args` are the query args to carry across pages (company, emp_id, …). #}
+{% macro bar(endpoint, args, page, pages, count, per_page, noun='rows') %}
+{% if pages > 1 %}
+<nav class="pager" aria-label="pages">
+  {% if page > 1 %}<a class="pg" href="{{ url_for(endpoint, page=page-1, **args) }}">‹ Prev</a>
+  {% else %}<span class="pg off">‹ Prev</span>{% endif %}
+
+  {% if pages <= 12 %}
+    {% for p in range(1, pages + 1) %}
+      {% if p == page %}<span class="pg on">{{ p }}</span>
+      {% else %}<a class="pg" href="{{ url_for(endpoint, page=p, **args) }}">{{ p }}</a>{% endif %}
+    {% endfor %}
+  {% else %}
+    <span class="pg on">{{ page }}</span><span class="pg-info">of {{ pages }}</span>
+  {% endif %}
+
+  {% if page < pages %}<a class="pg" href="{{ url_for(endpoint, page=page+1, **args) }}">Next ›</a>
+  {% else %}<span class="pg off">Next ›</span>{% endif %}
+
+  <span class="pg-info">{{ count }} {{ noun }} · showing {{ ((page-1) * per_page) + 1 }}–{{ [page * per_page, count] | min }}</span>
+</nav>
+{% endif %}
+{% endmacro %}

@@ -118,7 +118,7 @@ table.ln tfoot td { border-top:2px solid var(--ink); font-weight:700; background
     </tbody>
     {% if rows %}
     <tfoot><tr>
-      <td></td><td colspan="3">TOTALS — {{ rows|length }} loan{{ '' if rows|length==1 else 's' }}</td>
+      <td></td><td colspan="3">TOTALS — all {{ total_rows }} loan{{ '' if total_rows==1 else 's' }}</td>
       <td class="n">{{ totals.amount | peso }}</td><td class="n">{{ totals.paid | peso }}</td>
       <td class="n">{{ totals.balance | peso }}</td><td colspan="3"></td>
     </tr></tfoot>
@@ -126,8 +126,12 @@ table.ln tfoot td { border-top:2px solid var(--ink); font-weight:700; background
   </table>
   </div>
 
+  {% import "_pager.html" as pg with context %}
+  {{ pg.bar('loans', {'company': company, 'mode': mode, 'emp_id': emp_id, 'paid': '1' if include_paid else '0'},
+            page, pages, total_rows, per_page, 'loans') }}
+
   <div class="ln-meta">
-    <span><strong>{{ rows|length }}</strong> row{{ '' if rows|length==1 else 's' }}</span>
+    <span><strong>{{ total_rows }}</strong> loan{{ '' if total_rows==1 else 's' }}</span>
     <span class="rule"></span>
     <span>Outstanding balance <strong style="color:var(--stamp)">₱ {{ totals.balance | peso }}</strong></span>
     <span class="rule"></span>

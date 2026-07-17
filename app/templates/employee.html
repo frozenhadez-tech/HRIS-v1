@@ -151,6 +151,11 @@
     {% endfor %}
     </tbody>
   </table>
+  {% if sec.pages %}
+    {% import "_pager.html" as pgr with context %}
+    {{ pgr.bar('employee', {'company': p.company, 'emp_id': p.emp_id, 'mode': mode, 'tab': tab},
+               sec.page, sec.pages, sec.count, sec.per_page, spec.label | lower) }}
+  {% endif %}
   {% endfor %}
   {% if tab == 'payroll' %}<p style="margin:16px 0 0"><a class="back" href="{{ url_for('payslip', company=p.company, emp_id=p.emp_id, mode=mode) }}">🧾 View / print payslip →</a></p>{% endif %}
   {% if tab == 'loans' %}<p class="note" style="margin:14px 0 0">Amount = principal + interest · Balance = amount − total paid ·

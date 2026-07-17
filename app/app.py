@@ -425,7 +425,14 @@ def load_emp_tab(tab, co, emp, p):
                 sql = (f"SELECT {sel} FROM {s['table']} WHERE company=? AND emp_id=?"
                        + (f" ORDER BY {s['order']}" if s.get("order") else ""))
                 rows = q(sql, co, emp)
-            sections.append({"spec": s, "rows": rows})
+            sec = {"spec": s, "rows": rows, "count": len(rows)}
+            if s.get("page_size") and not s.get("single"):
+                ps = s["page_size"]
+                sec["pages"] = max(1, -(-len(rows) // ps))
+                sec["page"] = min(max(1, request.args.get("page", type=int) or 1), sec["pages"])
+                sec["per_page"] = ps
+                sec["rows"] = rows[(sec["page"] - 1) * ps: sec["page"] * ps]
+            sections.append(sec)
         return {"sections": sections}
     if tab == "employment":
         return {
@@ -1123,6 +1130,7 @@ def timecard_edit():
 
 
 FUND_SENTINEL = 99999          # loanamt=99999 marks an open-ended Provident Fund, not a fixed loan
+LOANS_PER_PAGE = 25
 PP_LABEL = {"1": "1st payroll", "2": "2nd payroll", "X": "Special payroll"}
 
 
@@ -1190,8 +1198,16 @@ def loans():
             tot["amount"] += amount or 0.0
             tot["paid"] += paid
             tot["balance"] += balance
-    return render_template("loans.html", emp=emp, emp_id=emp_id, status=status, rows=rows,
-                           totals=tot, include_paid=include_paid, matches=matches)
+
+    # totals stay whole-list — the outstanding balance only means anything across every
+    # loan; just the rows on screen are paged
+    n = len(rows)
+    pages = max(1, -(-n // LOANS_PER_PAGE))
+    page = min(max(1, request.args.get("page", type=int) or 1), pages)
+    return render_template("loans.html", emp=emp, emp_id=emp_id, status=status,
+                           rows=rows[(page - 1) * LOANS_PER_PAGE: page * LOANS_PER_PAGE], totals=tot,
+                           include_paid=include_paid, matches=matches,
+                           page=page, pages=pages, total_rows=n, per_page=LOANS_PER_PAGE)
 
 
 LOAN_FREQ = [("9", "Every payroll"), ("1", "1st payroll"), ("2", "2nd payroll"), ("3", "3rd payroll")]
