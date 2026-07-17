@@ -16,9 +16,11 @@ from flask import (Flask, abort, flash, get_flashed_messages, redirect,
 import db
 from db import q, one
 import auth
+import emp_tables
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-only-change-me")
+app.config["MAX_CONTENT_LENGTH"] = 4 * 1024 * 1024  # 4 MB file-upload cap
 app.teardown_appcontext(db.close_conn)
 
 
@@ -396,6 +398,18 @@ def employee(company, emp_id):
 
 
 def load_emp_tab(tab, co, emp, p):
+    if tab in emp_tables.SECTION_TABS:
+        sections = []
+        for s in emp_tables.SECTIONS[tab]:
+            fcols = [c for c, _, _ in s["fields"]]
+            cols = fcols if s.get("single") else (["rowid"] + fcols)
+            sel = ", ".join(cols)
+            if s.get("file"):
+                sel += f", ({s['file']['col']} IS NOT NULL) AS hasfile"
+            sql = (f"SELECT {sel} FROM {s['table']} WHERE company=? AND emp_id=?"
+                   + (f" ORDER BY {s['order']}" if s.get("order") else ""))
+            sections.append({"spec": s, "rows": q(sql, co, emp)})
+        return {"sections": sections}
     if tab == "employment":
         return {
             "movements": {
@@ -576,6 +590,96 @@ def employee_delete(company, emp_id):
     db.execute("DELETE FROM personnel WHERE company=? AND emp_id=?", company, emp_id)
     flash(f"Deleted employee {emp_id} — {p['lastname']}, {p['firstname']}.", "ok")
     return redirect(url_for("employees", mode=mode, company=company))
+
+
+# ── editable employee 201-file sections (education, training, docs, payroll, …) ──
+
+@app.route("/employee/<company>/<emp_id>/t/<table>/row", methods=["GET", "POST"])
+def emp_row(company, emp_id, table):
+    mode = request.args.get("mode", "PY")
+    s = emp_tables.SECTION_BY_TABLE.get(table)
+    if not s or not one("SELECT 1 AS x FROM personnel WHERE company=? AND emp_id=?", company, emp_id):
+        abort(404)
+    single, fileF = s.get("single"), s.get("file")
+    if request.method == "POST":
+        data = {c: _cast(request.form.get(c), t) for c, _, t in s["fields"]}
+        user, now = session.get("user", {}).get("id", ""), datetime.datetime.now()
+        if fileF and request.files.get("file") and request.files["file"].filename:
+            up = request.files["file"]
+            data[fileF["col"]] = up.read()
+            data[fileF["ext"]] = up.filename.rsplit(".", 1)[-1].lower() if "." in up.filename else ""
+            if not data.get(fileF["name"]):
+                data[fileF["name"]] = up.filename
+        if single:
+            exists = one(f"SELECT 1 AS x FROM {table} WHERE company=? AND emp_id=?", company, emp_id)
+            cols = list(data.keys())
+            if exists:
+                sets = ", ".join(f"{c}=?" for c in cols) + ", changeby=?, changedate=?"
+                db.execute(f"UPDATE {table} SET {sets} WHERE company=? AND emp_id=?",
+                           *([data[c] for c in cols] + [user, now, company, emp_id]))
+            else:
+                allc = ["company", "emp_id"] + cols + ["changeby", "changedate"]
+                vals = [company, emp_id] + [data[c] for c in cols] + [user, now]
+                db.execute(f"INSERT INTO {table} ({','.join(allc)}) VALUES ({','.join(['?']*len(allc))})", *vals)
+            flash(f"{s['label']} saved.", "ok")
+        else:
+            rowid = request.form.get("rowid")
+            if rowid:
+                setcols = list(data.keys())
+                sets = ", ".join(f"{c}=?" for c in setcols) + ", changeby=?, changedate=?"
+                db.execute(f"UPDATE {table} SET {sets} WHERE company=? AND emp_id=? AND rowid=?",
+                           *([data[c] for c in setcols] + [user, now, company, emp_id, rowid]))
+                flash(f"{s['label']} record updated.", "ok")
+            else:
+                cols = ["company", "emp_id"] + list(data.keys()) + ["changeby", "changedate"]
+                vals = [company, emp_id] + [data[c] for c in data] + [user, now]
+                db.execute(f"INSERT INTO {table} ({','.join(cols)}) VALUES ({','.join(['?']*len(cols))})", *vals)
+                flash(f"{s['label']} record added.", "ok")
+        return redirect(url_for("employee", company=company, emp_id=emp_id, mode=mode, tab=s["tab"]))
+    # GET — build the form (prefill for edit / single)
+    f, rowid = {}, request.args.get("rowid")
+    if rowid or single:
+        if single:
+            row = one(f"SELECT * FROM {table} WHERE company=? AND emp_id=?", company, emp_id)
+        else:
+            row = one(f"SELECT * FROM {table} WHERE company=? AND emp_id=? AND rowid=?", company, emp_id, rowid)
+        if row:
+            for c, _, t in s["fields"]:
+                v = row.get(c)
+                f[c] = v.strftime("%Y-%m-%d") if (t == "date" and v) else ("" if v is None else (v.strip() if isinstance(v, str) else v))
+    return render_template("emp_row.html", s=s, company=company, emp_id=emp_id, f=f,
+                           rowid=rowid, single=single, editing=bool(rowid or (single and f)))
+
+
+@app.route("/employee/<company>/<emp_id>/t/<table>/delete", methods=["POST"])
+def emp_delete_row(company, emp_id, table):
+    mode = request.args.get("mode", "PY")
+    s = emp_tables.SECTION_BY_TABLE.get(table)
+    if not s:
+        abort(404)
+    db.execute(f"DELETE FROM {table} WHERE company=? AND emp_id=? AND rowid=?",
+               company, emp_id, request.form.get("rowid"))
+    flash(f"{s['label']} record deleted.", "ok")
+    return redirect(url_for("employee", company=company, emp_id=emp_id, mode=mode, tab=s["tab"]))
+
+
+@app.route("/employee/<company>/<emp_id>/t/<table>/file/<rowid>")
+def emp_file(company, emp_id, table, rowid):
+    import mimetypes
+    from flask import Response
+    s = emp_tables.SECTION_BY_TABLE.get(table)
+    if not s or not s.get("file"):
+        abort(404)
+    fl = s["file"]
+    row = one(f"SELECT {fl['col']} AS blob, {fl['ext']} AS ext, {fl['name']} AS name "
+              f"FROM {table} WHERE company=? AND emp_id=? AND rowid=?", company, emp_id, rowid)
+    if not row or row["blob"] is None:
+        abort(404)
+    ext = (row["ext"] or "").strip().lower()
+    name = ((row["name"] or "document").strip() + (("." + ext) if ext else ""))
+    mime = mimetypes.types_map.get("." + ext, "application/octet-stream")
+    return Response(bytes(row["blob"]), mimetype=mime,
+                    headers={"Content-Disposition": f'inline; filename="{name}"'})
 
 
 # ───────────────────────────────────────────────────────── payroll register

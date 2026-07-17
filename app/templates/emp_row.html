@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if editing else 'Add' }} · {{ s.label }}{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{{ ab.bar(back_url=url_for('employee', company=company, emp_id=emp_id, mode=mode, tab=s.tab),
+          exit_url=url_for('dashboard', mode=mode, company=company)) }}
+{% endblock %}
+
+{% block content %}
+<div class="screen-head">
+  <a class="back" href="{{ url_for('employee', company=company, emp_id=emp_id, mode=mode, tab=s.tab) }}">‹ Back to record</a>
+  <h1>{{ 'Edit' if editing else 'Add' }} — {{ s.label }}</h1>
+</div>
+
+<form method="post" action="{{ url_for('emp_row', company=company, emp_id=emp_id, table=s.table, mode=mode) }}"
+      class="entry-form" autocomplete="off" {% if s.file %}enctype="multipart/form-data"{% endif %}>
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+  {% if editing and not single %}<input type="hidden" name="rowid" value="{{ rowid }}">{% endif %}
+
+  <section class="panel">
+    <p class="note" style="margin:0 0 12px">Employee <strong>{{ emp_id }}</strong> · {{ comp_map.get(company, company) }}</p>
+    <div class="form-grid">
+      {% for col, label, typ in s.fields %}
+      <label>{{ label }}
+        {% if typ == 'date' %}
+          <input type="date" name="{{ col }}" value="{{ f.get(col,'') }}">
+        {% elif typ in ('num','int') %}
+          <input type="number" step="{{ '1' if typ == 'int' else 'any' }}" name="{{ col }}" value="{{ f.get(col,'') }}">
+        {% else %}
+          <input type="text" name="{{ col }}" value="{{ f.get(col,'') }}" spellcheck="false">
+        {% endif %}
+      </label>
+      {% endfor %}
+      {% if s.file %}
+      <label class="file-label">Attach file {% if editing %}<span class="dim">— leave empty to keep the current file</span>{% endif %}
+        <input type="file" name="file">
+        <span class="dim" style="font-size:10px">Max 4 MB · stored in the database (PDF, image, etc.)</span>
+      </label>
+      {% endif %}
+    </div>
+  </section>
+
+  <div class="form-actions">
+    <button type="submit" class="btn-save">{{ 'Save changes' if editing else ('Save' if single else 'Add record') }}</button>
+    <a class="btn-cancel" href="{{ url_for('employee', company=company, emp_id=emp_id, mode=mode, tab=s.tab) }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

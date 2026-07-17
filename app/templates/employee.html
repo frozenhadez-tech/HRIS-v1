@@ -94,45 +94,51 @@
   <h2>Status changes</h2>
   {{ ui.simple_table(d.movements.empsts, [('effdate','Effective','d'),('oe','Old','c'),('ne','New','c'),('reason','Reason','')]) }}
 
-{% elif tab == 'education' %}
-  {{ ui.simple_table(d.rows, [('instdesc','School / Institution',''),('coursedesc','Course',''),('lvl','Level','c'),('fromdate','From','d'),('todate','To','d')]) }}
-{% elif tab == 'training' %}
-  {{ ui.simple_table(d.rows, [('coursedesc','Training',''),('instdesc','Provider',''),('fromdate','From','d'),('todate','To','d'),('tlhours','Hours','n')]) }}
-{% elif tab == 'workexp' %}
-  {{ ui.simple_table(d.rows, [('prevcompnm','Previous Employer',''),('workexpdsc','Position',''),('fromdate','From','d'),('todate','To','d')]) }}
-{% elif tab == 'dependents' %}
-  {{ ui.simple_table(d.rows, [('name','Name',''),('relcde','Relation','c'),('sex','Sex','c'),('birtdate','Birth date','d')]) }}
-{% elif tab == 'leaves' %}
-  <h2>Leave balances</h2>
-  {{ ui.simple_table(d.balances, [('lvcode','Leave','m'),('tyent','Entitled','n'),('dayern','Earned','n'),('dayuse','Used','n'),('bal','Balance','n')]) }}
-  <h2>Leave transactions</h2>
-  {{ ui.simple_table(d.trans, [('descrip','Type',''),('frdate','From','d'),('todate','To','d'),('reason','Reason','')]) }}
-{% elif tab == 'medical' %}
-  {{ ui.simple_table(d.rows, [('chkdate','Date','d'),('chktype','Type',''),('findings','Findings',''),('illtype','Illness',''),('follow_up_date','Follow-up','d')]) }}
-{% elif tab == 'appraisal' %}
-  {{ ui.simple_table(d.rows, [('apdate','Date','d'),('aprating','Rating','n'),('apprby','Appraiser','m'),('remarks','Remarks','')]) }}
-{% elif tab == 'disciplinary' %}
-  {{ ui.simple_table(d.rows, [('discpdate','Date','d'),('violation','Violation',''),('penalty','Penalty',''),('remarks','Remarks','')]) }}
-{% elif tab == 'doc' %}
-  {{ ui.simple_table(d.rows, [('docdate','Date','d'),('docname','Document',''),('ext','Type','c'),('remarks','Remarks','')]) }}
-{% elif tab == 'payroll' %}
-  <p style="margin:0 0 14px"><a class="back" href="{{ url_for('payslip', company=p.company, emp_id=p.emp_id, mode=mode) }}">🧾 View / print payslip →</a></p>
-  {% if d.pay %}
-  <h2>Payroll setup</h2>
-  <dl class="leader wide2">
-    <div><dt>Salary rate</dt><dd class="mono strong">₱ {{ d.pay.salary | peso }} / {{ {'D':'day','M':'month'}.get(d.pay.paytype, d.pay.paytype) }}</dd></div>
-    <div><dt>Pay group</dt><dd class="mono">{{ d.pay.paygroup or '—' }}</dd></div>
-    <div><dt>Pay mode</dt><dd class="mono">{{ d.pay.paymode or '—' }}</dd></div>
-    <div><dt>Bank</dt><dd class="mono">{{ d.pay.bankcode }} {{ d.pay.bankacct }}</dd></div>
-    <div><dt>OT eligible</dt><dd class="mono">{{ d.pay.ot or '—' }}</dd></div>
-  </dl>
-  {% endif %}
-  <h2>Loans</h2>
-  {{ ui.simple_table(d.loans, [('descrip','Loan',''),('refno','Ref','m'),('loanamt','Amount','n'),('payded','Per Pay','n'),('no_paid','Paid','n'),('no_of_pay','Terms','n'),('bal','Balance','n')]) }}
-{% elif tab == 'fixallow' %}
-  {{ ui.simple_table(d.rows, [('payitem','Item','m'),('descrip','Allowance',''),('amount','Amount','n'),('freq','Freq','c'),('paytype','Type','c'),('effdate','Effective','d')]) }}
-{% elif tab == 'fixded' %}
-  {{ ui.simple_table(d.rows, [('payitem','Item','m'),('descrip','Deduction',''),('amount','Amount','n'),('freq','Freq','c'),('b4tax','B4Tax','c')]) }}
+{% elif d.sections %}
+  {% for sec in d.sections %}
+  {% set spec = sec.spec %}
+  <div class="sec-head">
+    <h2>{{ spec.label }}</h2>
+    {% if spec.single %}
+      <a class="add-btn" href="{{ url_for('emp_row', company=p.company, emp_id=p.emp_id, table=spec.table, mode=mode) }}">{{ 'Edit' if sec.rows else '+ Set up' }}</a>
+    {% else %}
+      <a class="add-btn" href="{{ url_for('emp_row', company=p.company, emp_id=p.emp_id, table=spec.table, mode=mode) }}">+ Add</a>
+    {% endif %}
+  </div>
+  <table class="ledger wide">
+    <thead><tr>
+      {% for col, label, typ in spec.fields %}<th class="{{ 'num' if typ in ('num','int') }}">{{ label }}</th>{% endfor %}
+      {% if spec.file %}<th>File</th>{% endif %}
+      {% if not spec.single %}<th class="actions-col"></th>{% endif %}
+    </tr></thead>
+    <tbody>
+    {% for row in sec.rows %}
+      <tr>
+        {% for col, label, typ in spec.fields %}
+          {% if typ == 'num' %}<td class="num">{{ row[col] | peso }}</td>
+          {% elif typ == 'int' %}<td class="num">{{ row[col] | intf }}</td>
+          {% elif typ == 'date' %}<td class="mono">{{ row[col] | dt }}</td>
+          {% else %}<td>{{ row[col] }}</td>{% endif %}
+        {% endfor %}
+        {% if spec.file %}<td>{% if row.hasfile %}<a class="edit-lnk" target="_blank" href="{{ url_for('emp_file', company=p.company, emp_id=p.emp_id, table=spec.table, rowid=row.rowid) }}">download</a>{% else %}<span class="dim">—</span>{% endif %}</td>{% endif %}
+        {% if not spec.single %}
+        <td class="row-actions">
+          <a class="edit-lnk" href="{{ url_for('emp_row', company=p.company, emp_id=p.emp_id, table=spec.table, mode=mode, rowid=row.rowid) }}">edit</a>
+          <form method="post" action="{{ url_for('emp_delete_row', company=p.company, emp_id=p.emp_id, table=spec.table, mode=mode) }}" onsubmit="return confirm('Delete this record?')">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+            <input type="hidden" name="rowid" value="{{ row.rowid }}">
+            <button type="submit" class="del-lnk">delete</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+    {% else %}
+      <tr><td colspan="{{ spec.fields|length + (1 if spec.file else 0) + (0 if spec.single else 1) }}" class="empty">No records.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endfor %}
+  {% if tab == 'payroll' %}<p style="margin:16px 0 0"><a class="back" href="{{ url_for('payslip', company=p.company, emp_id=p.emp_id, mode=mode) }}">🧾 View / print payslip →</a></p>{% endif %}
 {% endif %}
 </section>
 

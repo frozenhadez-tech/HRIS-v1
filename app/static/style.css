@@ -136,6 +136,12 @@ td.row-actions { white-space: nowrap; text-align: right; display: flex; gap: 10p
 .del-lnk { font-family: var(--mono); font-size: 11px; color: var(--stamp); background: none; border: none; cursor: pointer; padding: 0; }
 .del-lnk:hover { text-decoration: underline; }
 td.row-actions form { display: inline; margin: 0; }
+.sec-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 22px 0 8px; }
+.sec-head h2 { margin: 0; border: none; padding: 0; }
+.sec-head .add-btn { margin: 0; }
+.tabpanel .sec-head:first-child { margin-top: 4px; }
+.file-label { grid-column: 1 / -1; }
+.file-label input[type=file] { font-family: var(--sans); font-size: 13px; padding: 6px 0; }
 .ab-spacer { flex: 1; }
 .ab-sec { position: relative; }
 .ab-secbtn { border-color: var(--line-strong); background: #fffdf6; }
