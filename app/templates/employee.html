@@ -111,6 +111,7 @@
   <table class="ledger wide">
     <thead><tr>
       {% for col, label, typ in cols %}<th class="{{ 'num' if typ in ('num','int') }}">{{ label }}</th>{% endfor %}
+      {% if spec.row_link %}<th>{{ spec.row_link.label }}</th>{% endif %}
       {% if spec.file %}<th>File</th>{% endif %}
       {% if not spec.single %}<th class="actions-col"></th>{% endif %}
     </tr></thead>
@@ -123,6 +124,7 @@
           {% elif typ == 'date' %}<td class="mono">{{ row[col] | dt }}</td>
           {% else %}<td>{{ row[col] }}</td>{% endif %}
         {% endfor %}
+        {% if spec.row_link %}<td><a class="edit-lnk" href="{{ url_for(spec.row_link.endpoint, company=p.company, rowid=row.rowid, mode=mode) }}">{{ spec.row_link.label }}</a></td>{% endif %}
         {% if spec.file %}<td>{% if row.hasfile %}<a class="edit-lnk" target="_blank" href="{{ url_for('emp_file', company=p.company, emp_id=p.emp_id, table=spec.table, rowid=row.rowid) }}">download</a>{% else %}<span class="dim">—</span>{% endif %}</td>{% endif %}
         {% if not spec.single %}
         <td class="row-actions">
@@ -136,13 +138,14 @@
         {% endif %}
       </tr>
     {% else %}
-      <tr><td colspan="{{ cols|length + (1 if spec.file else 0) + (0 if spec.single else 1) }}" class="empty">No records.</td></tr>
+      <tr><td colspan="{{ cols|length + (1 if spec.row_link else 0) + (1 if spec.file else 0) + (0 if spec.single else 1) }}" class="empty">No records.</td></tr>
     {% endfor %}
     </tbody>
   </table>
   {% endfor %}
   {% if tab == 'payroll' %}<p style="margin:16px 0 0"><a class="back" href="{{ url_for('payslip', company=p.company, emp_id=p.emp_id, mode=mode) }}">🧾 View / print payslip →</a></p>{% endif %}
-  {% if tab == 'loans' %}<p style="margin:16px 0 0"><a class="back" href="{{ url_for('loans', company=p.company, emp_id=p.emp_id, mode=mode) }}">💵 Loans screen (with payment history) →</a></p>{% endif %}
+  {% if tab == 'loans' %}<p class="note" style="margin:14px 0 0">Amount = principal + interest · Balance = amount − total paid ·
+    <em>Payments</em> opens that loan's instalment history.</p>{% endif %}
 {% endif %}
 </section>
 

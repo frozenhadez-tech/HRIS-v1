@@ -202,6 +202,7 @@ table.ledger td { padding: 6px 9px; border-bottom: 1px solid var(--line); vertic
 table.ledger tr:nth-child(even) td { background: rgba(216,207,186,.13); }
 table.ledger tr:hover td { background: var(--hl); }
 table.ledger .num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.ledger td.mono { white-space: nowrap; }   /* dates & codes read as one line */
 table.ledger .center { text-align: center; }
 .mono { font-family: var(--mono); font-size: 12px; }
 .strong { font-weight: 600; } .dim { color: var(--ink-soft); }
