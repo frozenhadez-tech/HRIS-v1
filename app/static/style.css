@@ -93,8 +93,36 @@ body {
 .ab-btn span b { font-weight: 700; }
 .ab-btn:hover { background: var(--hl); border-color: var(--line-strong); }
 .ab-btn:active { transform: translateY(1px); }
-.ab-btn.ab-ro { color: #9a927f; }
-.ab-btn.ab-ro:hover { background: rgba(192,57,43,.06); border-color: #d8b6ad; color: #7a7364; }
+.ab-btn.ab-ro { color: #b3ab98; cursor: default; }
+.ab-btn.ab-ro:hover { background: rgba(0,0,0,.02); }
+.ab-btn.ab-del span { color: var(--stamp); font-weight: 600; }
+.ab-btn.ab-del:hover { background: rgba(192,57,43,.09); border-color: #d8b6ad; }
+
+/* selectable employee rows */
+tr.selectable { cursor: pointer; }
+tr.selectable td a { text-decoration: none; color: inherit; }
+tr.selectable td a:hover { color: var(--stamp); text-decoration: underline; }
+tr.selectable.sel td { background: var(--hl) !important; box-shadow: inset 3px 0 0 var(--stamp); }
+
+/* flash messages */
+.flash-wrap { width: min(1200px, 95vw); margin: 12px auto 0; display: flex; flex-direction: column; gap: 8px; }
+.flash { padding: 9px 14px; font-size: 13px; border: 1px solid; }
+.flash-ok { background: rgba(53,96,74,.08); border-color: var(--green); color: var(--green); }
+.flash-error { background: rgba(166,60,43,.08); border-color: var(--stamp); color: var(--stamp); }
+
+/* data entry form */
+.entry-form .panel { margin-bottom: 16px; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px 20px; }
+.form-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--ink-soft); }
+.form-grid label.req::after { content: " *"; color: var(--stamp); }
+.form-grid input, .form-grid select { font-family: var(--sans); font-size: 13.5px; color: var(--ink); background: #fffdf6; border: 1px solid var(--line-strong); padding: 7px 10px; }
+.form-grid input:focus, .form-grid select:focus { outline: 2px solid var(--brass); outline-offset: -1px; }
+.form-actions { display: flex; align-items: center; gap: 14px; margin: 4px 0 30px; }
+.btn-save { font-family: var(--serif); font-weight: 700; font-size: 15px; color: var(--paper); background: var(--green); border: 1px solid var(--green); box-shadow: 3px 3px 0 var(--brass); padding: 10px 26px; cursor: pointer; }
+.btn-save:hover { filter: brightness(1.08); }
+.btn-save:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--brass); }
+.btn-cancel { color: var(--ink-soft); text-decoration: none; font-size: 13px; }
+.btn-cancel:hover { color: var(--stamp); text-decoration: underline; }
 .ab-spacer { flex: 1; }
 .ab-sec { position: relative; }
 .ab-secbtn { border-color: var(--line-strong); background: #fffdf6; }

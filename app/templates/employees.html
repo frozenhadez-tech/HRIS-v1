@@ -4,7 +4,9 @@
 {% block actionbar %}
 {% import "_actionbar.html" as ab with context %}
 {{ ab.bar(back_url=url_for('dashboard', mode=mode, company=company),
-          exit_url=url_for('dashboard', mode=mode, company=company)) }}
+          exit_url=url_for('dashboard', mode=mode, company=company),
+          add_url=url_for('employee_new', mode=mode, company=company),
+          del_select=true) }}
 {% endblock %}
 
 {% block content %}
@@ -40,7 +42,8 @@
     </thead>
     <tbody>
     {% for e in emps %}
-      <tr class="rowlink" onclick="location='{{ url_for('employee', company=e.company, emp_id=e.emp_id, mode=mode) }}'">
+      <tr class="selectable" data-co="{{ e.company }}" data-id="{{ e.emp_id }}"
+          data-name="{{ e.lastname }}, {{ e.firstname }}">
         <td class="mono">{{ e.emp_id }}</td>
         <td class="strong"><a href="{{ url_for('employee', company=e.company, emp_id=e.emp_id, mode=mode) }}">{{ e.lastname }}, {{ e.firstname }} {{ e.middlename }}</a></td>
         <td class="mono">{{ e.company }}</td>
@@ -54,7 +57,8 @@
     {% endfor %}
     </tbody>
   </table>
-  <p class="note">{{ emps | length }} shown{{ ' (capped at 500)' if emps | length == 500 }}.</p>
+  <p class="note">{{ emps | length }} shown{{ ' (capped at 500)' if emps | length == 500 }}.
+     Click a name to open a record; click a row to select it, then use <strong>Delete</strong>. Use <strong>Add</strong> for a new employee.</p>
 </section>
 
 {% endblock %}

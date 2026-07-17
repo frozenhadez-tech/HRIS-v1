@@ -1,23 +1,43 @@
-{# Function-key action toolbar, mirroring the original app's data-screen toolbar:
-   F12-Close · F5-Refresh · F6-Add · F23-Delete · [section ▾] · F3-Exit #}
-{% macro bar(back_url='', exit_url='', section='', sections=None, emp=None) %}
-<div class="actionbar" role="toolbar" data-back="{{ back_url }}" data-exit="{{ exit_url }}">
-  <button class="ab-btn" type="button" data-act="close" title="Close (F12)">
+{# Action toolbar under the menu bar: Close · Refresh · Add · Delete · [section ▾] · Exit
+   add_url    → enables Add (navigates to the new-record form)
+   del_url    → enables Delete for a specific record (employee detail page)
+   del_select → enables Delete driven by row-selection (employee list) #}
+{% macro bar(back_url='', exit_url='', section='', sections=None, emp=None,
+             add_url='', del_url='', del_name='', del_select=false) %}
+<div class="actionbar" role="toolbar" data-back="{{ back_url }}" data-exit="{{ exit_url }}"
+     {% if del_url %}data-del-url="{{ del_url }}"{% endif %}
+     {% if del_name %}data-del-name="{{ del_name }}"{% endif %}
+     {% if del_select %}data-del-select="1"{% endif %}>
+  <button class="ab-btn" type="button" data-act="close" title="Close">
     <svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8" stroke="#c0392b" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg>
-    <span><b>F12</b>-Close</span>
+    <span>Close</span>
   </button>
-  <button class="ab-btn" type="button" data-act="refresh" title="Refresh (F5)">
+  <button class="ab-btn" type="button" data-act="refresh" title="Refresh">
     <svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.6" fill="none" stroke="#2b6ca3" stroke-width="1.7"/><path d="M13.4 2.2V5H10.6" fill="none" stroke="#2b6ca3" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    <span><b>F5</b>-Refresh</span>
+    <span>Refresh</span>
   </button>
-  <button class="ab-btn ab-ro" type="button" data-act="add" title="Add record — enabled once write screens are built">
+  {% if add_url %}
+  <a class="ab-btn" href="{{ add_url }}" title="Add employee">
     <svg viewBox="0 0 16 16"><rect x="2.5" y="2" width="8" height="12" fill="#fff" stroke="#8a8a8a"/><path d="M10.5 10.5h4.2M12.6 8.4v4.2" stroke="#2e7d32" stroke-width="1.9" stroke-linecap="round"/></svg>
-    <span><b>F6</b>-Add</span>
+    <span>Add</span>
+  </a>
+  {% else %}
+  <button class="ab-btn ab-ro" type="button" data-act="add-off" title="Add — available on the Employee list">
+    <svg viewBox="0 0 16 16"><rect x="2.5" y="2" width="8" height="12" fill="#fff" stroke="#8a8a8a"/><path d="M10.5 10.5h4.2M12.6 8.4v4.2" stroke="#9ab99a" stroke-width="1.9" stroke-linecap="round"/></svg>
+    <span>Add</span>
   </button>
-  <button class="ab-btn ab-ro" type="button" data-act="delete" title="Delete record — enabled once write screens are built">
+  {% endif %}
+  {% if del_url or del_select %}
+  <button class="ab-btn ab-del" type="button" data-act="delete" title="Delete employee">
     <svg viewBox="0 0 16 16"><rect x="2.5" y="2" width="8" height="12" fill="#fff" stroke="#8a8a8a"/><path d="M10.6 10.6l4 4M14.6 10.6l-4 4" stroke="#c0392b" stroke-width="1.9" stroke-linecap="round"/></svg>
-    <span><b>F23</b>-Delete</span>
+    <span>Delete</span>
   </button>
+  {% else %}
+  <button class="ab-btn ab-ro" type="button" data-act="delete-off" title="Delete — open an employee, or select one in the list">
+    <svg viewBox="0 0 16 16"><rect x="2.5" y="2" width="8" height="12" fill="#fff" stroke="#8a8a8a"/><path d="M10.6 10.6l4 4M14.6 10.6l-4 4" stroke="#d8a59d" stroke-width="1.9" stroke-linecap="round"/></svg>
+    <span>Delete</span>
+  </button>
+  {% endif %}
 
   {% if sections and emp %}
   <div class="ab-sec">
@@ -35,9 +55,9 @@
   {% endif %}
 
   <div class="ab-spacer"></div>
-  <button class="ab-btn" type="button" data-act="exit" title="Exit to main (F3)">
+  <button class="ab-btn" type="button" data-act="exit" title="Exit to main">
     <svg viewBox="0 0 16 16"><path d="M9 2.2H3.2v11.6H9" fill="none" stroke="#555" stroke-width="1.5"/><path d="M6.6 8h7.8M11.4 5.2 14.4 8l-3 2.8" fill="none" stroke="#2e7d32" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    <span><b>F3</b>-Exit</span>
+    <span>Exit</span>
   </button>
 </div>
 {% endmacro %}

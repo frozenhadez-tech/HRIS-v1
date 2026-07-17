@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Add Employee · HRPayroll L98{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{{ ab.bar(back_url=url_for('employees', mode=mode, company=company),
+          exit_url=url_for('dashboard', mode=mode, company=company)) }}
+{% endblock %}
+
+{% block content %}
+{% set f = form %}
+<div class="screen-head">
+  <a class="back" href="{{ url_for('employees', mode=mode, company=company) }}">‹ Employee list</a>
+  <h1>Add Employee</h1>
+</div>
+
+<form method="post" action="{{ url_for('employee_new', mode=mode) }}" class="entry-form" autocomplete="off">
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+
+  <section class="panel">
+    <h2>Identity</h2>
+    <div class="form-grid">
+      <label class="req">Company
+        <select name="company">
+          {% for c in companies %}<option value="{{ c.company }}" {{ 'selected' if (f.get('company') or company)==c.company }}>{{ c.company }} — {{ c.companynam }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="req">Employee No.
+        <input type="text" name="emp_id" value="{{ f.get('emp_id','') }}" required placeholder="e.g. 000500" spellcheck="false">
+      </label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Personal</h2>
+    <div class="form-grid">
+      <label class="req">Last name<input type="text" name="lastname" value="{{ f.get('lastname','') }}" required></label>
+      <label>First name<input type="text" name="firstname" value="{{ f.get('firstname','') }}"></label>
+      <label>Middle name<input type="text" name="middlename" value="{{ f.get('middlename','') }}"></label>
+      <label>Sex
+        <select name="sex">
+          <option value="">—</option>
+          <option value="M" {{ 'selected' if f.get('sex')=='M' }}>Male</option>
+          <option value="F" {{ 'selected' if f.get('sex')=='F' }}>Female</option>
+        </select>
+      </label>
+      <label>Civil status
+        <select name="civilsts">
+          {% for code,lab in [('','—'),('S','Single'),('M','Married'),('W','Widowed'),('SP','Separated')] %}
+          <option value="{{ code }}" {{ 'selected' if f.get('civilsts')==code }}>{{ lab }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Birth date<input type="date" name="birthdate" value="{{ f.get('birthdate','') }}"></label>
+      <label>Nationality<input type="text" name="nationality" value="{{ f.get('nationality','Filipino') }}"></label>
+      <label>Religion<input type="text" name="religion" value="{{ f.get('religion','') }}"></label>
+      <label>Blood type<input type="text" name="bloodtype" value="{{ f.get('bloodtype','') }}"></label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Address &amp; contact</h2>
+    <div class="form-grid">
+      <label>Address<input type="text" name="address" value="{{ f.get('address','') }}"></label>
+      <label>Barangay<input type="text" name="barangay" value="{{ f.get('barangay','') }}"></label>
+      <label>City / Town<input type="text" name="addrcity" value="{{ f.get('addrcity','') }}"></label>
+      <label>Province<input type="text" name="addrprov" value="{{ f.get('addrprov','') }}"></label>
+      <label>Zip<input type="text" name="zipcode" value="{{ f.get('zipcode','') }}"></label>
+      <label>Telephone<input type="text" name="telno" value="{{ f.get('telno','') }}"></label>
+      <label>Cellphone<input type="text" name="cellphone" value="{{ f.get('cellphone','') }}"></label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Government numbers</h2>
+    <div class="form-grid">
+      <label>SSS No.<input type="text" name="sssno" value="{{ f.get('sssno','') }}"></label>
+      <label>TIN<input type="text" name="tin" value="{{ f.get('tin','') }}"></label>
+      <label>PhilHealth No.<input type="text" name="phealthno" value="{{ f.get('phealthno','') }}"></label>
+      <label>Pag-IBIG No.<input type="text" name="hdmfno" value="{{ f.get('hdmfno','') }}"></label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Assignment</h2>
+    <div class="form-grid">
+      <label>Division<input type="text" name="division" value="{{ f.get('division','') }}"></label>
+      <label>Department<input type="text" name="dept" value="{{ f.get('dept','') }}"></label>
+      <label>Section<input type="text" name="section" value="{{ f.get('section','') }}"></label>
+      <label>Position code<input type="text" name="jobcode" value="{{ f.get('jobcode','') }}"></label>
+      <label>Status
+        <select name="empsts">
+          <option value="">—</option>
+          {% for e in est %}<option value="{{ e.code }}" {{ 'selected' if f.get('empsts')==e.code }}>{{ e.code }} — {{ e.descrip }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Date hired<input type="date" name="datehired" value="{{ f.get('datehired','') }}"></label>
+      <label>Date regularized<input type="date" name="datereg" value="{{ f.get('datereg','') }}"></label>
+      <label>Reports to<input type="text" name="reports_to" value="{{ f.get('reports_to','') }}"></label>
+      <label>Shift<input type="text" name="shift" value="{{ f.get('shift','') }}"></label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Emergency contact</h2>
+    <div class="form-grid">
+      <label>Name<input type="text" name="contactper" value="{{ f.get('contactper','') }}"></label>
+      <label>Relationship<input type="text" name="contactrel" value="{{ f.get('contactrel','') }}"></label>
+      <label>Telephone<input type="text" name="contacttel" value="{{ f.get('contacttel','') }}"></label>
+    </div>
+  </section>
+
+  <div class="form-actions">
+    <button type="submit" class="btn-save">Save employee</button>
+    <a class="btn-cancel" href="{{ url_for('employees', mode=mode, company=company) }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

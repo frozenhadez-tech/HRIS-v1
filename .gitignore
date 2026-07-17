@@ -21,3 +21,6 @@ scratchpad/
 *.bak
 *.mdf
 *.ldf
+
+.vercel
+.env*

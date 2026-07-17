@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import datetime
 import os
+import secrets
 from functools import wraps
-from flask import (Flask, abort, redirect, render_template, request, session, url_for)
+from flask import (Flask, abort, flash, get_flashed_messages, redirect,
+                   render_template, request, session, url_for)
 
 import db
 from db import q, one
@@ -18,6 +20,21 @@ import auth
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-only-change-me")
 app.teardown_appcontext(db.close_conn)
+
+
+# ─────────────────────────────────────────────────────────────── CSRF
+
+def csrf_token():
+    if "csrf" not in session:
+        session["csrf"] = secrets.token_hex(16)
+    return session["csrf"]
+
+
+@app.before_request
+def csrf_protect():
+    if request.method == "POST":
+        if not session.get("csrf") or request.form.get("csrf") != session["csrf"]:
+            abort(400, "Invalid or missing CSRF token — reload the page and try again.")
 
 
 def login_required(view):
@@ -133,6 +150,7 @@ def inject():
         "companies": LOOKUPS["companies"], "comp_map": LOOKUPS["comp"],
         "PAYROLL_MENU": PAYROLL_MENU, "HR_MENU": HR_MENU,
         "mode": mode, "company": sel_company(),
+        "csrf_token": csrf_token,
     }
 
 
@@ -355,6 +373,66 @@ def load_emp_tab(tab, co, emp, p):
         "years": q("SELECT payyear, COUNT(*) AS lines FROM paytranh WHERE company=? AND emp_id=? "
                    "GROUP BY payyear ORDER BY payyear DESC", co, emp),
     }
+
+
+# ───────────────────────────────────────────────────── add / delete employee
+
+EMP_FIELDS = [
+    ("lastname", "Last name"), ("firstname", "First name"), ("middlename", "Middle name"),
+    ("sex", "Sex"), ("civilsts", "Civil status"), ("birthdate", "Birth date"),
+    ("nationality", "Nationality"), ("religion", "Religion"), ("bloodtype", "Blood type"),
+    ("address", "Address"), ("barangay", "Barangay"), ("addrcity", "City / Town"),
+    ("addrprov", "Province"), ("zipcode", "Zip"), ("telno", "Telephone"), ("cellphone", "Cellphone"),
+    ("sssno", "SSS No."), ("tin", "TIN"), ("phealthno", "PhilHealth No."), ("hdmfno", "Pag-IBIG No."),
+    ("division", "Division"), ("dept", "Department"), ("section", "Section"), ("jobcode", "Position code"),
+    ("empsts", "Status"), ("datehired", "Date hired"), ("datereg", "Date regularized"),
+    ("reports_to", "Reports to"), ("shift", "Shift"),
+    ("contactper", "Emergency contact"), ("contactrel", "Relationship"), ("contacttel", "Contact tel"),
+]
+DATE_FIELDS = {"birthdate", "datehired", "datereg"}
+
+
+@app.route("/employee/new", methods=["GET", "POST"])
+def employee_new():
+    mode = request.args.get("mode", "PY")
+    est = q("SELECT RTRIM(fldcode) AS code, RTRIM(descrip) AS descrip "
+            "FROM tablecode1 WHERE tblcode='EST' ORDER BY fldcode")
+    if request.method == "POST":
+        company = (request.form.get("company") or "001").strip()
+        emp_id = (request.form.get("emp_id") or "").strip()
+        errors = []
+        if not emp_id:
+            errors.append("Employee No. is required.")
+        if not (request.form.get("lastname") or "").strip():
+            errors.append("Last name is required.")
+        if emp_id and one("SELECT 1 AS x FROM personnel WHERE company=? AND emp_id=?", company, emp_id):
+            errors.append(f"Employee {emp_id} already exists in company {company}.")
+        if not errors:
+            cols, vals = ["company", "emp_id"], [company, emp_id]
+            for f, _ in EMP_FIELDS:
+                v = (request.form.get(f) or "").strip()
+                cols.append(f)
+                vals.append((v or None) if f in DATE_FIELDS else v)
+            ph = ",".join("?" for _ in cols)
+            db.execute(f"INSERT INTO personnel ({','.join(cols)}) VALUES ({ph})", *vals)
+            flash(f"Employee {emp_id} added.", "ok")
+            return redirect(url_for("employee", company=company, emp_id=emp_id, mode=mode))
+        for e in errors:
+            flash(e, "error")
+    return render_template("employee_new.html", est=est, form=request.form, fields=EMP_FIELDS,
+                           date_fields=DATE_FIELDS)
+
+
+@app.route("/employee/<company>/<emp_id>/delete", methods=["POST"])
+def employee_delete(company, emp_id):
+    mode = request.args.get("mode", "PY")
+    p = one("SELECT RTRIM(lastname) AS lastname, RTRIM(firstname) AS firstname "
+            "FROM personnel WHERE company=? AND emp_id=?", company, emp_id)
+    if not p:
+        abort(404)
+    db.execute("DELETE FROM personnel WHERE company=? AND emp_id=?", company, emp_id)
+    flash(f"Deleted employee {emp_id} — {p['lastname']}, {p['firstname']}.", "ok")
+    return redirect(url_for("employees", mode=mode, company=company))
 
 
 # ───────────────────────────────────────────────────────── payroll register

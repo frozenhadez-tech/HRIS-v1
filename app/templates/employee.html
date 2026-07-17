@@ -6,7 +6,10 @@
 {% set cur = (tabs | selectattr('0', 'equalto', tab) | map(attribute='1') | first) or 'Personal Info' %}
 {{ ab.bar(back_url=url_for('employees', mode=mode, company=company),
           exit_url=url_for('dashboard', mode=mode, company=company),
-          section=cur, sections=tabs, emp=p) }}
+          section=cur, sections=tabs, emp=p,
+          add_url=url_for('employee_new', mode=mode, company=company),
+          del_url=url_for('employee_delete', company=p.company, emp_id=p.emp_id, mode=mode),
+          del_name=p.lastname ~ ', ' ~ p.firstname) }}
 {% endblock %}
 
 {% block content %}

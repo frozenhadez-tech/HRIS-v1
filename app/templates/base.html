@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf" content="{{ csrf_token() }}">
 <title>{% block title %}HRPayroll L98{% endblock %}</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>&#128188;</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -64,6 +65,14 @@
 
 {% block actionbar %}{% endblock %}
 
+{% with msgs = get_flashed_messages(with_categories=true) %}
+{% if msgs %}
+<div class="flash-wrap">
+  {% for cat, m in msgs %}<div class="flash flash-{{ cat }}">{{ m }}</div>{% endfor %}
+</div>
+{% endif %}
+{% endwith %}
+
 <main>
 {% block content %}{% endblock %}
 </main>
@@ -72,36 +81,55 @@
 <script>
 (function () {
   var ab = document.querySelector('.actionbar');
-  function go(sel) {
-    if (!ab) return;
-    var url = ab.dataset[sel];
-    if (url) { location.href = url; } else if (sel === 'back') { history.back(); }
-  }
   function toast(msg) {
     var t = document.getElementById('toast');
     t.textContent = msg; t.hidden = false; t.classList.add('show');
-    clearTimeout(window.__tt); window.__tt = setTimeout(function () { t.classList.remove('show'); }, 2600);
+    clearTimeout(window.__tt); window.__tt = setTimeout(function () { t.classList.remove('show'); }, 2800);
   }
   window.__abToast = toast;
+  function csrf() { var m = document.querySelector('meta[name=csrf]'); return m ? m.content : ''; }
+  function postTo(url) {
+    var f = document.createElement('form');
+    f.method = 'POST'; f.action = url;
+    var t = document.createElement('input'); t.type = 'hidden'; t.name = 'csrf'; t.value = csrf();
+    f.appendChild(t); document.body.appendChild(f); f.submit();
+  }
+  // row selection on the employee list (for the Delete button)
+  window.__selEmp = null;
+  document.querySelectorAll('tr.selectable').forEach(function (tr) {
+    tr.addEventListener('click', function (e) {
+      if (e.target.closest('a')) return;             // let name links open the record
+      document.querySelectorAll('tr.selectable.sel').forEach(function (x) { x.classList.remove('sel'); });
+      tr.classList.add('sel');
+      window.__selEmp = { co: tr.dataset.co, id: tr.dataset.id, name: tr.dataset.name };
+    });
+  });
+  function doDelete() {
+    var url = ab && ab.dataset.delUrl;                // employee detail page
+    var name = (ab && ab.dataset.delName) || '';
+    if (!url && ab && ab.dataset.delSelect) {         // employee list: use selection
+      if (!window.__selEmp) { toast('Select an employee first (click a row), then Delete.'); return; }
+      url = '/employee/' + encodeURIComponent(window.__selEmp.co) + '/' +
+            encodeURIComponent(window.__selEmp.id) + '/delete';
+      name = window.__selEmp.name;
+    }
+    if (!url) return;
+    if (confirm('Delete employee' + (name ? ' ' + name : '') + '?\nThis removes the employee record. This cannot be undone.')) {
+      postTo(url);
+    }
+  }
   if (ab) {
     ab.addEventListener('click', function (e) {
       var b = e.target.closest('[data-act]'); if (!b) return;
       var act = b.dataset.act;
-      if (act === 'close') go('back');
-      else if (act === 'exit') go('exit');
+      if (act === 'close') { ab.dataset.back ? location.href = ab.dataset.back : history.back(); }
+      else if (act === 'exit') { if (ab.dataset.exit) location.href = ab.dataset.exit; }
       else if (act === 'refresh') location.reload();
-      else if (act === 'add') toast('Read-only build — Add is enabled in the write-screens phase.');
-      else if (act === 'delete') toast('Read-only build — Delete is enabled in the write-screens phase.');
+      else if (act === 'delete') doDelete();
+      else if (act === 'add-off') toast('Open the Employee list to add a new employee.');
+      else if (act === 'delete-off') toast('Open an employee (or select one in the list) to delete.');
     });
   }
-  document.addEventListener('keydown', function (e) {
-    var typing = /^(INPUT|SELECT|TEXTAREA)$/.test((e.target.tagName || ''));
-    if (!ab) return;
-    if (e.key === 'F12') { e.preventDefault(); go('back'); }
-    else if (e.key === 'F3') { e.preventDefault(); go('exit'); }
-    else if (e.key === 'F6' && !typing) { e.preventDefault(); toast('Read-only build — Add is enabled in the write-screens phase.'); }
-    // F5 keeps its native browser refresh (matches F5-Refresh)
-  });
 })();
 </script>
 
