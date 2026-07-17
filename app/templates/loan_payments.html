@@ -1,42 +1,69 @@
 {% extends "base.html" %}
-{% block title %}Loan Payments · {{ emp_id }}{% endblock %}
+{% block title %}{{ ln.descrip }} Payment History · {{ ln.emp_id }}{% endblock %}
 
 {% block actionbar %}
 {% import "_actionbar.html" as ab with context %}
-{{ ab.bar(back_url=url_for('loans', company=company, emp_id=emp_id, mode=mode),
+{{ ab.bar(back_url=url_for('loans', company=company, emp_id=ln.emp_id, mode=mode),
           exit_url=url_for('dashboard', mode=mode, company=company)) }}
 {% endblock %}
 
 {% block content %}
+<style>
+.lph { max-width: 660px; }
+.lph .sub { font-family:var(--mono); font-size:11.5px; color:var(--ink-soft); margin:0 0 12px; }
+table.lp { border-collapse:collapse; font-size:12.5px; width:100%; border:1px solid var(--line-strong); }
+table.lp th, table.lp td { border:1px solid var(--line); padding:3px 10px; white-space:nowrap; }
+table.lp thead th { background:var(--paper-deep); font-family:var(--sans); font-weight:600; font-size:10.5px;
+  text-transform:uppercase; letter-spacing:.4px; color:var(--ink-soft); text-align:left; }
+table.lp th.n, table.lp td.n { text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums; }
+table.lp td.idx { text-align:right; color:var(--ink-soft); font-family:var(--mono); width:1%; }
+table.lp td.y, table.lp td.m, table.lp td.d { font-family:var(--mono); }
+table.lp tr:hover td { background:var(--hl); }
+table.lp tfoot td { border-top:2px solid var(--ink); font-weight:700; background:var(--paper-deep); }
+</style>
+
 <div class="screen-head">
-  <a class="back" href="{{ url_for('loans', company=company, emp_id=emp_id, mode=mode) }}">‹ Loans</a>
-  <h1>Payments</h1>
-  <p class="crumb">{{ descrip }} · {{ emp.empname }} ({{ emp_id }}) · deductions taken through payroll</p>
+  <a class="back" href="{{ url_for('loans', company=company, emp_id=ln.emp_id, mode=mode) }}">‹ Loans</a>
+  <h1>{{ ln.descrip }} Payment History <span class="dim" style="font-weight:400;font-size:14px">— {{ emp.empname }}</span></h1>
 </div>
 
-<section class="panel">
-  <table class="ledger wide">
-    <thead><tr><th>Year</th><th>Month</th><th>Period</th><th class="num">Amount Paid</th></tr></thead>
+<section class="panel lph">
+  <p class="sub">
+    Approved {{ ln.dateapprov.month }}/{{ ln.dateapprov.day }}/{{ ln.dateapprov.year }}
+    {%- if ln.docno %} · Doc. No. {{ ln.docno }}{% endif %}
+    {%- if amount is not none %} · Loan Amount {{ amount | peso }}{% endif %}
+  </p>
+
+  <table class="lp">
+    <thead><tr>
+      <th></th><th>Year</th><th>Month</th><th>Pay Period</th><th>Date</th><th class="n">Amount</th>
+    </tr></thead>
     <tbody>
     {% for r in rows %}
       <tr>
-        <td class="mono">{{ r.payyear }}</td>
-        <td class="mono">{{ '%02d' % r.paymonth }}</td>
-        <td class="mono">{{ r.payperiod }}</td>
-        <td class="num">{{ r.amt | peso }}</td>
+        <td class="idx">{{ loop.index }}.</td>
+        <td class="y">{{ r.year if r.show_year else '' }}</td>
+        <td class="m">{{ r.month if r.show_month else '' }}</td>
+        <td>{{ r.period }}</td>
+        <td class="d">{% if r.paydate %}{{ '%02d/%02d/%04d' % (r.paydate.month, r.paydate.day, r.paydate.year) }}{% endif %}</td>
+        <td class="n">{{ r.amt | peso }}</td>
       </tr>
     {% else %}
-      <tr><td colspan="4" class="empty">No payroll deductions recorded for this loan item.</td></tr>
+      <tr><td colspan="6" class="empty" style="text-align:center;padding:18px">
+        No instalments have been deducted for this loan yet.</td></tr>
     {% endfor %}
     </tbody>
     {% if rows %}
-    <tfoot><tr class="tot">
-      <td colspan="3" class="strong">TOTAL — {{ rows|length }} payment{{ '' if rows|length==1 else 's' }}</td>
-      <td class="num strong">{{ total | peso }}</td>
+    <tfoot><tr>
+      <td colspan="5" style="text-align:right">{{ rows|length }} instalment{{ '' if rows|length==1 else 's' }}</td>
+      <td class="n">{{ total | peso }}</td>
     </tr></tfoot>
     {% endif %}
   </table>
-  <p class="note">Payments are the <em>{{ descrip }}</em> deductions posted to this employee's payroll, newest first.
-    Where an employee has had more than one loan of the same type, these cover all of them.</p>
+
+  {% if amount is not none and rows %}
+  <p class="note">Paid {{ total | peso }} of {{ amount | peso }}{% if (amount - total) > 0.005 %} ·
+    <strong style="color:var(--stamp)">{{ (amount - total) | peso }} outstanding</strong>{% else %} · fully paid{% endif %}.</p>
+  {% endif %}
 </section>
 {% endblock %}

@@ -46,18 +46,40 @@ table.ln tfoot td { border-top:2px solid var(--ink); font-weight:700; background
   <form class="bar" method="get">
     <input type="hidden" name="mode" value="{{ mode }}"><input type="hidden" name="company" value="{{ company }}">
     <label class="fld">Badge No.
-      <input type="text" name="emp_id" value="{{ emp_id }}" maxlength="6" placeholder="e.g. 000212">
+      <input type="text" name="emp_id" value="{{ emp_id }}" maxlength="40" placeholder="number or name"
+             autocomplete="off" autofocus>
     </label>
+    {% if not emp %}<span class="fld" style="text-transform:none;letter-spacing:0">Enter a badge number, a name, or part of one</span>{% endif %}
     {% if emp %}<span class="empname">{{ emp.empname }}</span>
       <span class="fld">Status: <strong style="color:var(--ink);text-transform:none">{{ status or '—' }}</strong></span>{% endif %}
     <label class="chk"><input type="checkbox" name="paid" value="1" {{ 'checked' if include_paid }}> Include Fully-paid</label>
     <button class="go" type="submit">Retrieve</button>
   </form>
 
-  {% if emp_id and not emp %}
-    <p class="note" style="color:var(--stamp);margin-top:14px">No employee {{ emp_id }} in {{ comp_map.get(company,'this company') }} — check the badge number, or switch company (top-right).</p>
+  {% if matches %}
+    <div class="ln-scroll">
+      <table class="ln">
+        <thead><tr><th></th><th>Badge No.</th><th>Employee</th><th>Status</th></tr></thead>
+        <tbody>
+        {% for m in matches %}
+          {% set open_url = url_for('loans', company=company, mode=mode, emp_id=m.emp_id, paid=('1' if include_paid else '0')) %}
+          <tr onclick="location.href='{{ open_url }}'" style="cursor:pointer">
+            <td class="idx">{{ loop.index }}.</td>
+            <td class="doc"><a class="edit-lnk" href="{{ open_url }}">{{ m.emp_id }}</a></td>
+            <td>{{ m.empname }}</td>
+            <td><span class="chip {{ m.empsts | tone }}">{{ m.empsts | est }}</span></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="note dim" style="margin-top:12px">{{ matches|length }} employee{{ '' if matches|length==1 else 's' }}
+      match “{{ emp_id }}” — click one to open their loans.</p>
+  {% elif emp_id and not emp %}
+    <p class="note" style="color:var(--stamp);margin-top:14px">Nothing matches “{{ emp_id }}” in {{ comp_map.get(company,'this company') }} —
+      try a badge number, a surname, or part of a name, or switch company (top-right).</p>
   {% elif not emp %}
-    <p class="note dim" style="margin-top:14px">Enter a Badge No. and press <em>Retrieve</em> to list that employee's loans.</p>
+    <p class="note dim" style="margin-top:14px">Enter a badge number or a name (even part of one) and press <em>Retrieve</em>.</p>
   {% else %}
   <div class="ln-scroll">
   <table class="ln">
@@ -77,7 +99,7 @@ table.ln tfoot td { border-top:2px solid var(--ink); font-weight:700; background
         <td class="n">{{ r.paid | peso }}</td>
         <td class="n bal {{ 'due' if r.balance > 0.005 }}">{{ r.balance | peso }}</td>
         <td class="doc">{{ r.docno }}</td>
-        <td><a class="edit-lnk" href="{{ url_for('loan_payments', company=company, emp_id=emp_id, payitem=r.payitem, mode=mode) }}">Payments</a></td>
+        <td><a class="edit-lnk" href="{{ url_for('loan_payments', company=company, rowid=r.rowid, mode=mode) }}">Payments</a></td>
         <td class="row-actions">
           <a class="edit-lnk" href="{{ url_for('emp_row', company=company, emp_id=emp_id, table='loans', mode=mode, rowid=r.rowid) }}">edit</a>
           <form method="post" action="{{ url_for('emp_delete_row', company=company, emp_id=emp_id, table='loans', mode=mode) }}" onsubmit="return confirm('Delete this loan record?')">

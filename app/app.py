@@ -1119,6 +1119,20 @@ def timecard_edit():
 
 
 FUND_SENTINEL = 99999          # loanamt=99999 marks an open-ended Provident Fund, not a fixed loan
+PP_LABEL = {"1": "1st payroll", "2": "2nd payroll", "X": "Special payroll"}
+
+
+def _emp_search(company, term):
+    """Find employees by badge number, surname, first name or any part of the name."""
+    t = f"%{term.strip().lower()}%"          # wildcards travel as a parameter, never inline
+    return q("SELECT RTRIM(emp_id) AS emp_id, RTRIM(lastname)||', '||RTRIM(COALESCE(firstname,''))"
+             "||CASE WHEN COALESCE(RTRIM(middlename),'')<>'' THEN ' '||RTRIM(middlename) ELSE '' END AS empname, "
+             "RTRIM(COALESCE(empsts,'')) AS empsts, RTRIM(COALESCE(jobcode,'')) AS jobcode "
+             "FROM personnel WHERE company=? AND ("
+             "  LOWER(RTRIM(emp_id)) LIKE ? OR LOWER(RTRIM(lastname)) LIKE ? "
+             "  OR LOWER(RTRIM(COALESCE(firstname,''))) LIKE ? "
+             "  OR LOWER(RTRIM(lastname)||', '||RTRIM(COALESCE(firstname,''))) LIKE ?) "
+             "ORDER BY lastname, firstname LIMIT 50", company, t, t, t, t)
 
 
 @app.route("/loans")
@@ -1131,10 +1145,20 @@ def loans():
     emp_id = (request.args.get("emp_id") or "").strip()
     include_paid = (request.args.get("paid", "1") == "1")
 
-    emp = one("SELECT RTRIM(lastname)||', '||RTRIM(COALESCE(firstname,''))"
-              "||CASE WHEN COALESCE(RTRIM(middlename),'')<>'' THEN ' '||RTRIM(middlename) ELSE '' END AS empname, "
-              "RTRIM(COALESCE(empsts,'')) AS empsts FROM personnel WHERE company=? AND emp_id=?",
-              company, emp_id) if emp_id else None
+    def _load(eid):
+        return one("SELECT RTRIM(lastname)||', '||RTRIM(COALESCE(firstname,''))"
+                   "||CASE WHEN COALESCE(RTRIM(middlename),'')<>'' THEN ' '||RTRIM(middlename) ELSE '' END AS empname, "
+                   "RTRIM(COALESCE(empsts,'')) AS empsts FROM personnel WHERE company=? AND RTRIM(emp_id)=?",
+                   company, eid)
+
+    # the box takes a badge number, a name, or any part of one
+    emp = _load(emp_id) if emp_id else None
+    matches = []
+    if emp_id and not emp:
+        matches = _emp_search(company, emp_id)
+        if len(matches) == 1:                       # a single hit just opens
+            emp_id = matches[0]["emp_id"]
+            emp, matches = _load(emp_id), []
     status = ""
     if emp and emp["empsts"]:
         s = one("SELECT RTRIM(descrip) AS d FROM tablecode1 WHERE tblcode='EST' AND RTRIM(fldcode)=?", emp["empsts"])
@@ -1163,28 +1187,44 @@ def loans():
             tot["paid"] += paid
             tot["balance"] += balance
     return render_template("loans.html", emp=emp, emp_id=emp_id, status=status, rows=rows,
-                           totals=tot, include_paid=include_paid)
+                           totals=tot, include_paid=include_paid, matches=matches)
 
 
 @app.route("/loans/payments")
 def loan_payments():
-    """Payment history for one loan item — the payroll deductions actually taken."""
+    """Payment history for ONE loan — the instalments actually deducted through payroll.
+    Each deduction carries the loan's approval stamp in paytranh.trdate2, which is what
+    ties it to this loan rather than to another loan of the same type; trdate1 is the
+    payroll date the instalment was taken."""
     company = sel_company()
-    emp_id = (request.args.get("emp_id") or "").strip()
-    payitem = (request.args.get("payitem") or "").strip()
-    emp = one("SELECT RTRIM(lastname)||', '||RTRIM(COALESCE(firstname,'')) AS empname "
-              "FROM personnel WHERE company=? AND emp_id=?", company, emp_id) if emp_id else None
-    if not emp:
+    mode = request.args.get("mode", "PY")
+    rowid = request.args.get("rowid", type=int)
+    ln = one("SELECT RTRIM(l.emp_id) AS emp_id, RTRIM(l.payitem) AS payitem, l.dateapprov, "
+             "RTRIM(COALESCE(i.descrip, l.payitem)) AS descrip, COALESCE(l.loanamt,0) AS loanamt, "
+             "COALESCE(l.intamt,0) AS intamt, RTRIM(COALESCE(l.docno,'')) AS docno "
+             "FROM loans l LEFT JOIN payitem i ON i.company=l.company AND i.payitem=l.payitem "
+             "WHERE l.company=? AND l.rowid=?", company, rowid) if rowid else None
+    if not ln:
         abort(404)
-    item = one("SELECT RTRIM(COALESCE(descrip,payitem)) AS d FROM payitem WHERE company=? AND payitem=?",
-               company, payitem)
-    rows = q("SELECT payyear, paymonth, RTRIM(payperiod) AS payperiod, SUM(tramount) AS amt "
-             "FROM paytranh WHERE company=? AND emp_id=? AND payitem=? "
-             "GROUP BY payyear, paymonth, payperiod "
-             "ORDER BY payyear DESC, paymonth DESC, payperiod DESC", company, emp_id, payitem)
-    return render_template("loan_payments.html", emp=emp, emp_id=emp_id, payitem=payitem,
-                           descrip=(item["d"] if item else payitem), rows=rows,
-                           total=sum(float(r["amt"] or 0) for r in rows))
+    emp = one("SELECT RTRIM(lastname)||', '||RTRIM(COALESCE(firstname,''))"
+              "||CASE WHEN COALESCE(RTRIM(middlename),'')<>'' THEN ' '||RTRIM(middlename) ELSE '' END AS empname "
+              "FROM personnel WHERE company=? AND RTRIM(emp_id)=?", company, ln["emp_id"])
+    raw = q("SELECT t.payyear, t.paymonth, RTRIM(t.payperiod) AS payperiod, t.trdate1 AS paydate, "
+            "SUM(t.tramount) AS amt FROM paytranh t "
+            "WHERE t.company=? AND RTRIM(t.emp_id)=? AND RTRIM(t.payitem)=? AND t.trdate2=? "
+            "GROUP BY t.payyear, t.paymonth, t.payperiod, t.trdate1 "
+            "ORDER BY t.payyear, t.paymonth, t.payperiod", company, ln["emp_id"], ln["payitem"], ln["dateapprov"])
+    rows, py, pm = [], None, None
+    for r in raw:
+        y, m = int(r["payyear"]), int(r["paymonth"])
+        rows.append({"year": y, "month": m, "show_year": y != py, "show_month": (y, m) != (py, pm),
+                     "period": PP_LABEL.get(r["payperiod"], r["payperiod"]),
+                     "paydate": r["paydate"], "amt": float(r["amt"] or 0)})
+        py, pm = y, m
+    amount = float(ln["loanamt"]) + float(ln["intamt"])
+    paid = sum(r["amt"] for r in rows)
+    return render_template("loan_payments.html", emp=emp, ln=ln, rows=rows, total=paid,
+                           amount=(None if float(ln["loanamt"]) >= FUND_SENTINEL else amount))
 
 
 @app.route("/engine/verify")
