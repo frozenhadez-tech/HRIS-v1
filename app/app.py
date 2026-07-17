@@ -767,6 +767,26 @@ def payroll_compute_all():
                            rows=rows, totals=totals, existing=existing)
 
 
+@app.route("/payroll/post", methods=["POST"])
+def payroll_post():
+    import payroll_calc as pc
+    company = sel_company()
+    mode = request.form.get("mode", "PY")
+    year = int(request.form.get("year") or 0)
+    month = int(request.form.get("month") or 0)
+    period = (request.form.get("period") or "1").strip()
+    overwrite = request.form.get("overwrite") == "1"
+    st = pc.period_status(company, year, month, period)
+    if st["rows"] and not overwrite:
+        flash(f"{year}-{month:02d} Period {period} already has {st['rows']:,} rows. "
+              f"Use “Re-post (overwrite)” to replace them.", "error")
+    else:
+        res = pc.post_period(company, year, month, period, session.get("user", {}).get("id", ""), overwrite)
+        flash(f"Posted {res['lines']:,} lines for {res['employees']} employees to {year}-{month:02d} "
+              f"Period {period} (net ₱{res['net']:,.2f}). It now appears in payslips, registers and forms.", "ok")
+    return redirect(url_for("payroll_compute_all", company=company, year=year, month=month, period=period, mode=mode))
+
+
 @app.route("/engine/verify")
 def engine_verify():
     company = sel_company()

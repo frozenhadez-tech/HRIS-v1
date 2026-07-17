@@ -140,6 +140,14 @@ td.row-actions form { display: inline; margin: 0; }
 .sec-head h2 { margin: 0; border: none; padding: 0; }
 .sec-head .add-btn { margin: 0; }
 .tabpanel .sec-head:first-child { margin-top: 4px; }
+.post-bar { margin-top: 18px; padding-top: 16px; border-top: 2px solid var(--ink); }
+.post-bar form { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.post-label { flex: 1; font-size: 12.5px; color: var(--ink-soft); }
+.btn-post { font-family: var(--serif); font-weight: 700; font-size: 14px; color: var(--paper);
+  background: var(--green); border: 1px solid var(--green); box-shadow: 3px 3px 0 var(--brass); padding: 10px 24px; cursor: pointer; }
+.btn-post:hover { filter: brightness(1.08); }
+.btn-post:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--brass); }
+.btn-post.danger { background: var(--stamp); border-color: var(--stamp); }
 .file-label { grid-column: 1 / -1; }
 .file-label input[type=file] { font-family: var(--sans); font-size: 13px; padding: 6px 0; }
 .ab-spacer { flex: 1; }

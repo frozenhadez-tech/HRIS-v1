@@ -14,6 +14,10 @@ against the app's stored history (see CALC_SPEC.md and /engine/verify):
 """
 from __future__ import annotations
 
+import datetime
+import psycopg
+
+import db
 from db import q, one
 from payroll_engine import engine, r2
 
@@ -173,3 +177,48 @@ def validate(company, year, month, period, tol=1.0):
                     checks[k][0] += 1
     return {k: {"match": v[0], "n": v[1], "rate": (100 * v[0] / v[1]) if v[1] else None}
             for k, v in checks.items()}
+
+
+def period_status(company, year, month, period):
+    """How many paytranh rows / employees already exist for a period (posting guard)."""
+    r = one("SELECT COUNT(*) AS rows, COUNT(DISTINCT emp_id) AS emps FROM paytranh "
+            "WHERE company=? AND payyear=? AND paymonth=? AND payperiod=?", company, year, month, period)
+    return {"rows": r["rows"], "emps": r["emps"]}
+
+
+def post_period(company, year, month, period, user, overwrite=False):
+    """Write the computed batch to paytranh so it flows into payslips/registers/forms.
+    Writes each earning/deduction line plus the system totals 900-907. Atomic; if the
+    period already has rows it only proceeds with overwrite=True (delete + replace)."""
+    rows, totals = compute_batch(company, year, month, period)
+    pg = {r["emp_id"].strip(): (r["paygroup"] or "M")
+          for r in q("SELECT RTRIM(emp_id) AS emp_id, RTRIM(COALESCE(paygroup,'M')) AS paygroup "
+                     "FROM payroll WHERE company=?", company)}
+    now = datetime.datetime.now()
+    cols = ("company,payyear,paymonth,payperiod,paygroup,recno,seqno,rtype,emp_id,payitem,"
+            "paycat,trhours,tramount,changeby,changedate")
+    ph = "(" + ",".join(["%s"] * 15) + ")"
+    n = 0
+    with psycopg.connect(db._dsn(), autocommit=False) as c:
+        cur = c.cursor()
+        if overwrite:
+            cur.execute("DELETE FROM paytranh WHERE company=%s AND payyear=%s AND paymonth=%s AND payperiod=%s",
+                        (company, year, month, period))
+        batch = []
+        for recno, r in enumerate(rows, start=1):
+            emp, grp, seq = r["emp_id"], pg.get(r["emp_id"], "M"), 0
+            lines = [(e["payitem"], e["cat"], e["amount"], e.get("hours")) for e in r["earnings"]]
+            lines += [(d["payitem"], d["cat"], d["amount"], None) for d in r["deductions"]]
+            er = r["er"]
+            lines += [("900", "9", r["gross"], None), ("901", "9", r["taxable"], None),
+                      ("902", "9", r["total_ded"], None), ("903", "9", r["net"], None),
+                      ("904", "9", er["hdmf"], None), ("905", "9", er["sss"], None),
+                      ("906", "9", er["philhealth"], None), ("907", "9", er["ec"], None)]
+            for payitem, paycat, amt, hrs in lines:
+                seq += 1
+                batch.append((company, year, month, period, grp, recno, seq, "R", emp,
+                              payitem, paycat, hrs, amt, user, now))
+        cur.executemany(f"INSERT INTO paytranh ({cols}) VALUES {ph}", batch)
+        n = len(batch)
+        c.commit()
+    return {"employees": len(rows), "lines": n, "net": totals["net"]}

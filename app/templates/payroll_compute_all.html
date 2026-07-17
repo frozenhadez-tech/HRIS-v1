@@ -54,6 +54,22 @@
     </tfoot>
   </table>
   <p class="note">Draft — a preview using the verified formulas (basic, OT, statutory, tax). Overtime and ad-hoc
-    earnings aren't included here; use each employee's <em>payslip →</em> to add overtime. Posting to real payroll is the next step.</p>
+    earnings aren't included here; use each employee's <em>payslip →</em> to add overtime.</p>
+
+  {% if rows %}
+  <div class="post-bar">
+    <form method="post" action="{{ url_for('payroll_post', mode=mode, company=company) }}"
+          onsubmit="return confirm({{ ('Re-post will DELETE the ' ~ existing ~ ' existing rows for ' ~ year ~ '-' ~ ('%02d' % month) ~ ' Period ' ~ period ~ ' and replace them with this computed draft. Continue?') | tojson if existing else ('Post ' ~ (rows|length) ~ ' employees to ' ~ year ~ '-' ~ ('%02d' % month) ~ ' Period ' ~ period ~ ' as real payroll?') | tojson }})">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <input type="hidden" name="mode" value="{{ mode }}"><input type="hidden" name="company" value="{{ company }}">
+      <input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ month }}">
+      <input type="hidden" name="period" value="{{ period }}">
+      {% if existing %}<input type="hidden" name="overwrite" value="1">{% endif %}
+      <span class="post-label">Post &amp; Close → writes this draft to {{ year }}-{{ '%02d' % month }} Period {{ period }},
+        flowing into payslips, registers &amp; government forms.</span>
+      <button type="submit" class="btn-post {{ 'danger' if existing }}">{{ 'Re-post (overwrite)' if existing else 'Post & Close' }}</button>
+    </form>
+  </div>
+  {% endif %}
 </section>
 {% endblock %}
