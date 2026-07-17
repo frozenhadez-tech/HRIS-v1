@@ -173,6 +173,37 @@ def screen(key):
     )
 
 
+from reports import REPORTS  # noqa: E402
+
+
+@app.route("/report/<key>")
+def report(key):
+    r = REPORTS.get(key)
+    if not r:
+        abort(404)
+    company = sel_company()
+    level = r["level"]
+    years = [int(row["y"]) for row in
+             q("SELECT DISTINCT payyear AS y FROM paytranh WHERE company=? ORDER BY payyear DESC", company)]
+    latest = one("SELECT payyear, paymonth, payperiod FROM paytranh WHERE company=? "
+                 "ORDER BY payyear DESC, paymonth DESC, payperiod DESC LIMIT 1", company)
+    year = int(request.args.get("year", type=int) or (latest["payyear"] if latest else 2025))
+    month = int(request.args.get("month", type=int) or (latest["paymonth"] if latest else 1))
+    period = (request.args.get("period") or (latest["payperiod"] if latest else "1")).strip()
+    if level == "month":
+        start = f"{year:04d}-{month:02d}-01"
+        ny, nm = (year + 1, 1) if month == 12 else (year, month + 1)
+        end = f"{ny:04d}-{nm:02d}-01"
+        params = [company, start, end]
+    elif level == "year":
+        params = [company, year]
+    else:
+        params = [company, year, month, period]
+    rows = q(r["sql"], *params)
+    return render_template("report.html", r=r, key=key, rows=rows, level=level,
+                           years=years, year=year, month=month, period=period)
+
+
 # ─────────────────────────────────────────────────────────────── dashboard
 
 @app.route("/")

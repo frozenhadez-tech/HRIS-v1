@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ r.title }} · HRPayroll L98{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{{ ab.bar(back_url=url_for('dashboard', mode=mode, company=company), exit_url=url_for('dashboard', mode=mode, company=company)) }}
+{% endblock %}
+
+{% block content %}
+{% import "_macros.html" as ui with context %}
+<div class="screen-head">
+  <h1>{{ r.title }}</h1>
+  <p class="crumb">{% if r.subtitle %}{{ r.subtitle }} · {% endif %}{{ comp_map.get(company, '') }}</p>
+</div>
+
+<section class="panel">
+  <form class="filters" method="get">
+    <input type="hidden" name="mode" value="{{ mode }}">
+    <input type="hidden" name="company" value="{{ company }}">
+    <select name="year">
+      {% for y in years %}<option value="{{ y }}" {{ 'selected' if year==y }}>{{ y }}</option>{% endfor %}
+    </select>
+    {% if level in ('month', 'period') %}
+    <select name="month">
+      {% for m in range(1,13) %}<option value="{{ m }}" {{ 'selected' if month==m }}>{{ '%02d' % m }}</option>{% endfor %}
+    </select>
+    {% endif %}
+    {% if level == 'period' %}
+    <select name="period">
+      <option value="1" {{ 'selected' if period=='1' }}>Period 1</option>
+      <option value="2" {{ 'selected' if period=='2' }}>Period 2</option>
+      <option value="X" {{ 'selected' if period=='X' }}>Period X</option>
+    </select>
+    {% endif %}
+    <button type="submit">View</button>
+  </form>
+
+  {{ ui.simple_table(rows, r.cols) }}
+  <p class="note">{{ rows | length }} row{{ 's' if rows|length != 1 }}{{ ' (capped at 1000)' if rows|length >= 1000 }}
+    {% if level == 'month' %}· attendance for {{ year }}-{{ '%02d' % month }}{% elif level == 'year' %}· year {{ year }}{% else %}· {{ year }}-{{ '%02d' % month }} period {{ period }}{% endif %}.</p>
+</section>
+{% endblock %}

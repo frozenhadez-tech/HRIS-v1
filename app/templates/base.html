@@ -45,6 +45,8 @@
           <a class="menu-item" href="{{ url_for('screen', key=target[2:]) }}?mode={{ mode }}&company={{ company }}">{{ label }}</a>
         {% elif target.startswith('f:') %}
           <a class="menu-item" href="{{ url_for('forms', kind=target[2:]) }}?mode={{ mode }}&company={{ company }}">{{ label }}</a>
+        {% elif target.startswith('r:') %}
+          <a class="menu-item" href="{{ url_for('report', key=target[2:]) }}?mode={{ mode }}&company={{ company }}">{{ label }}</a>
         {% else %}
           <span class="menu-item disabled">{{ label }}<em>soon</em></span>
         {% endif %}
