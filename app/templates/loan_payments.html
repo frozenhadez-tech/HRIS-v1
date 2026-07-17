@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Loan Payments · {{ emp_id }}{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{{ ab.bar(back_url=url_for('loans', company=company, emp_id=emp_id, mode=mode),
+          exit_url=url_for('dashboard', mode=mode, company=company)) }}
+{% endblock %}
+
+{% block content %}
+<div class="screen-head">
+  <a class="back" href="{{ url_for('loans', company=company, emp_id=emp_id, mode=mode) }}">‹ Loans</a>
+  <h1>Payments</h1>
+  <p class="crumb">{{ descrip }} · {{ emp.empname }} ({{ emp_id }}) · deductions taken through payroll</p>
+</div>
+
+<section class="panel">
+  <table class="ledger wide">
+    <thead><tr><th>Year</th><th>Month</th><th>Period</th><th class="num">Amount Paid</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td class="mono">{{ r.payyear }}</td>
+        <td class="mono">{{ '%02d' % r.paymonth }}</td>
+        <td class="mono">{{ r.payperiod }}</td>
+        <td class="num">{{ r.amt | peso }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4" class="empty">No payroll deductions recorded for this loan item.</td></tr>
+    {% endfor %}
+    </tbody>
+    {% if rows %}
+    <tfoot><tr class="tot">
+      <td colspan="3" class="strong">TOTAL — {{ rows|length }} payment{{ '' if rows|length==1 else 's' }}</td>
+      <td class="num strong">{{ total | peso }}</td>
+    </tr></tfoot>
+    {% endif %}
+  </table>
+  <p class="note">Payments are the <em>{{ descrip }}</em> deductions posted to this employee's payroll, newest first.
+    Where an employee has had more than one loan of the same type, these cover all of them.</p>
+</section>
+{% endblock %}

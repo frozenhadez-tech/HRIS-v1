@@ -1117,6 +1117,75 @@ def timecard_edit():
                            dfrom=d0.isoformat(), dto=d1.isoformat())
 
 
+FUND_SENTINEL = 99999          # loanamt=99999 marks an open-ended Provident Fund, not a fixed loan
+
+
+@app.route("/loans")
+def loans():
+    """Loans — per-employee loan ledger, mirroring the old app's Loans window.
+    Loan Amount = principal + interest; Total Paid = totalpaid + totalpaidi;
+    Balance = the difference. Provident Fund rows (loanamt 99999) carry no fixed amount."""
+    company = sel_company()
+    mode = request.args.get("mode", "PY")
+    emp_id = (request.args.get("emp_id") or "").strip()
+    include_paid = (request.args.get("paid", "1") == "1")
+
+    emp = one("SELECT RTRIM(lastname)||', '||RTRIM(COALESCE(firstname,''))"
+              "||CASE WHEN COALESCE(RTRIM(middlename),'')<>'' THEN ' '||RTRIM(middlename) ELSE '' END AS empname, "
+              "RTRIM(COALESCE(empsts,'')) AS empsts FROM personnel WHERE company=? AND emp_id=?",
+              company, emp_id) if emp_id else None
+    status = ""
+    if emp and emp["empsts"]:
+        s = one("SELECT RTRIM(descrip) AS d FROM tablecode1 WHERE tblcode='EST' AND RTRIM(fldcode)=?", emp["empsts"])
+        status = s["d"] if s else emp["empsts"]
+
+    rows, tot = [], {"amount": 0.0, "paid": 0.0, "balance": 0.0}
+    if emp:
+        for r in q("SELECT l.rowid, l.dateapprov, RTRIM(l.payitem) AS payitem, "
+                   "RTRIM(COALESCE(i.descrip, l.payitem)) AS descrip, RTRIM(COALESCE(l.refno,'')) AS ltype, "
+                   "COALESCE(l.loanamt,0) AS loanamt, COALESCE(l.intamt,0) AS intamt, "
+                   "COALESCE(l.totalpaid,0) AS totalpaid, COALESCE(l.totalpaidi,0) AS totalpaidi, "
+                   "RTRIM(COALESCE(l.docno,'')) AS docno, COALESCE(l.payded,0) AS payded "
+                   "FROM loans l LEFT JOIN payitem i ON i.company=l.company AND i.payitem=l.payitem "
+                   "WHERE l.company=? AND l.emp_id=? ORDER BY l.dateapprov DESC", company, emp_id):
+            fund = float(r["loanamt"]) >= FUND_SENTINEL
+            amount = None if fund else float(r["loanamt"]) + float(r["intamt"])
+            paid = float(r["totalpaid"]) + float(r["totalpaidi"])
+            balance = 0.0 if fund else round(amount - paid, 2)
+            if not include_paid and balance <= 0.005:
+                continue                                   # "Include Fully-paid" unticked
+            rows.append({"rowid": r["rowid"], "descrip": r["descrip"], "date": r["dateapprov"],
+                         "ltype": r["ltype"], "payitem": r["payitem"], "docno": r["docno"],
+                         "amount": amount, "paid": paid, "balance": balance,
+                         "payded": float(r["payded"]), "fund": fund})
+            tot["amount"] += amount or 0.0
+            tot["paid"] += paid
+            tot["balance"] += balance
+    return render_template("loans.html", emp=emp, emp_id=emp_id, status=status, rows=rows,
+                           totals=tot, include_paid=include_paid)
+
+
+@app.route("/loans/payments")
+def loan_payments():
+    """Payment history for one loan item — the payroll deductions actually taken."""
+    company = sel_company()
+    emp_id = (request.args.get("emp_id") or "").strip()
+    payitem = (request.args.get("payitem") or "").strip()
+    emp = one("SELECT RTRIM(lastname)||', '||RTRIM(COALESCE(firstname,'')) AS empname "
+              "FROM personnel WHERE company=? AND emp_id=?", company, emp_id) if emp_id else None
+    if not emp:
+        abort(404)
+    item = one("SELECT RTRIM(COALESCE(descrip,payitem)) AS d FROM payitem WHERE company=? AND payitem=?",
+               company, payitem)
+    rows = q("SELECT payyear, paymonth, RTRIM(payperiod) AS payperiod, SUM(tramount) AS amt "
+             "FROM paytranh WHERE company=? AND emp_id=? AND payitem=? "
+             "GROUP BY payyear, paymonth, payperiod "
+             "ORDER BY payyear DESC, paymonth DESC, payperiod DESC", company, emp_id, payitem)
+    return render_template("loan_payments.html", emp=emp, emp_id=emp_id, payitem=payitem,
+                           descrip=(item["d"] if item else payitem), rows=rows,
+                           total=sum(float(r["amt"] or 0) for r in rows))
+
+
 @app.route("/engine/verify")
 def engine_verify():
     company = sel_company()

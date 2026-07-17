@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Loans · HRPayroll L98{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{{ ab.bar(back_url=url_for('dashboard', mode=mode, company=company),
+          exit_url=url_for('dashboard', mode=mode, company=company),
+          add_url=(url_for('emp_row', company=company, emp_id=emp_id, table='loans', mode=mode) if emp else '')) }}
+{% endblock %}
+
+{% block content %}
+<style>
+.lnw .bar { display:flex; flex-wrap:wrap; align-items:center; gap:10px 26px; padding-bottom:14px;
+  border-bottom:1px solid var(--line-strong); margin-bottom:2px; }
+.lnw .fld { display:flex; align-items:center; gap:8px; font-size:11px; text-transform:uppercase;
+  letter-spacing:.5px; color:var(--ink-soft); }
+.lnw .fld input[type=text] { font-family:var(--mono); font-size:13px; padding:5px 7px; width:110px;
+  border:1px solid var(--line-strong); background:var(--paper); color:var(--ink); text-transform:none; }
+.lnw .empname { font-family:var(--serif); font-weight:700; font-size:15px; color:var(--ink); text-transform:none; letter-spacing:0; }
+.lnw .go { font-family:var(--serif); font-weight:700; font-size:13px; color:var(--paper); background:var(--ink);
+  border:1px solid var(--ink); padding:6px 16px; cursor:pointer; }
+.lnw .go:hover { filter:brightness(1.1); }
+.lnw .chk { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink); text-transform:none; letter-spacing:0; }
+.ln-scroll { overflow-x:auto; border:1px solid var(--line-strong); margin-top:14px; }
+table.ln { border-collapse:collapse; font-size:12.5px; white-space:nowrap; width:100%; }
+table.ln th, table.ln td { border:1px solid var(--line); padding:3px 8px; }
+table.ln thead th { position:sticky; top:0; background:var(--paper-deep); font-family:var(--sans); font-weight:600;
+  font-size:10.5px; text-transform:uppercase; letter-spacing:.4px; color:var(--ink-soft); text-align:left; }
+table.ln th.n, table.ln td.n { text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums; }
+table.ln td.idx { text-align:right; color:var(--ink-soft); font-family:var(--mono); width:1%; }
+table.ln td.d, table.ln td.doc { font-family:var(--mono); }
+table.ln tr:nth-child(even) td { background:rgba(0,0,0,.015); }
+table.ln tr:hover td { background:var(--hl); }
+table.ln td.bal.due { color:var(--stamp); font-weight:600; }
+table.ln td.fund { color:var(--ink-soft); font-style:italic; }
+table.ln tfoot td { border-top:2px solid var(--ink); font-weight:700; background:var(--paper-deep); }
+.ln-meta { margin-top:12px; display:flex; gap:14px; align-items:center; flex-wrap:wrap; font-size:12px; color:var(--ink-soft); }
+</style>
+
+<div class="screen-head">
+  <h1>Loans</h1>
+  <p class="crumb">Loan ledger per employee · {{ comp_map.get(company, '') }}</p>
+</div>
+
+<section class="panel lnw">
+  <form class="bar" method="get">
+    <input type="hidden" name="mode" value="{{ mode }}"><input type="hidden" name="company" value="{{ company }}">
+    <label class="fld">Badge No.
+      <input type="text" name="emp_id" value="{{ emp_id }}" maxlength="6" placeholder="e.g. 000212">
+    </label>
+    {% if emp %}<span class="empname">{{ emp.empname }}</span>
+      <span class="fld">Status: <strong style="color:var(--ink);text-transform:none">{{ status or '—' }}</strong></span>{% endif %}
+    <label class="chk"><input type="checkbox" name="paid" value="1" {{ 'checked' if include_paid }}> Include Fully-paid</label>
+    <button class="go" type="submit">Retrieve</button>
+  </form>
+
+  {% if emp_id and not emp %}
+    <p class="note" style="color:var(--stamp);margin-top:14px">No employee {{ emp_id }} in {{ comp_map.get(company,'this company') }} — check the badge number, or switch company (top-right).</p>
+  {% elif not emp %}
+    <p class="note dim" style="margin-top:14px">Enter a Badge No. and press <em>Retrieve</em> to list that employee's loans.</p>
+  {% else %}
+  <div class="ln-scroll">
+  <table class="ln">
+    <thead><tr>
+      <th></th><th>Description</th><th>Date</th><th>Type</th>
+      <th class="n">Loan Amount</th><th class="n">Total Paid</th><th class="n">Balance</th>
+      <th>Doc. No.</th><th>Payments</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td class="idx">{{ loop.index }}.</td>
+        <td>{{ r.descrip }}</td>
+        <td class="d">{{ r.date.month }}/{{ r.date.day }}/{{ r.date.year }}</td>
+        <td>{{ r.ltype }}</td>
+        <td class="n {{ 'fund' if r.fund }}">{% if r.amount is not none %}{{ r.amount | peso }}{% else %}—{% endif %}</td>
+        <td class="n">{{ r.paid | peso }}</td>
+        <td class="n bal {{ 'due' if r.balance > 0.005 }}">{{ r.balance | peso }}</td>
+        <td class="doc">{{ r.docno }}</td>
+        <td><a class="edit-lnk" href="{{ url_for('loan_payments', company=company, emp_id=emp_id, payitem=r.payitem, mode=mode) }}">Payments</a></td>
+        <td class="row-actions">
+          <a class="edit-lnk" href="{{ url_for('emp_row', company=company, emp_id=emp_id, table='loans', mode=mode, rowid=r.rowid) }}">edit</a>
+          <form method="post" action="{{ url_for('emp_delete_row', company=company, emp_id=emp_id, table='loans', mode=mode) }}" onsubmit="return confirm('Delete this loan record?')">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="rowid" value="{{ r.rowid }}">
+            <button type="submit" class="del-lnk">delete</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="10" class="empty" style="text-align:center;padding:20px">
+        No {{ '' if include_paid else 'outstanding ' }}loans for {{ emp_id }}.</td></tr>
+    {% endfor %}
+    </tbody>
+    {% if rows %}
+    <tfoot><tr>
+      <td></td><td colspan="3">TOTALS — {{ rows|length }} loan{{ '' if rows|length==1 else 's' }}</td>
+      <td class="n">{{ totals.amount | peso }}</td><td class="n">{{ totals.paid | peso }}</td>
+      <td class="n">{{ totals.balance | peso }}</td><td colspan="3"></td>
+    </tr></tfoot>
+    {% endif %}
+  </table>
+  </div>
+
+  <div class="ln-meta">
+    <span><strong>{{ rows|length }}</strong> row{{ '' if rows|length==1 else 's' }}</span>
+    <span class="rule"></span>
+    <span>Outstanding balance <strong style="color:var(--stamp)">₱ {{ totals.balance | peso }}</strong></span>
+    <span class="rule"></span>
+    <span>Loan Amount = principal + interest · Balance = amount − total paid</span>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

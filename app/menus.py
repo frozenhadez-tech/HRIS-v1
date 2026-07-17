@@ -25,7 +25,7 @@ PAYROLL_MENU = [
         ("Department Change", "s:deptchange"),
         ("Job Position Change", "s:jobchange"),
         ("—", ""),
-        ("Loans", "s:loans"),
+        ("Loans", "e:loans"),
         ("—", ""),
         ("YTD Data Adjustments", "r:ytd_adjust"),
         ("Previous Employment YTD Gross and Tax", "r:prev_emp_ytd"),
