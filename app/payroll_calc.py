@@ -31,16 +31,9 @@ def is_mwe(company, salary, paytype):
     return daily <= md + 0.005
 
 
-def compute(company, emp_id, year, month, period, ot_lines=None):
-    """Compute one employee's payslip for a period. ot_lines: optional list of
-    {payitem, hours} to add overtime/hours-based entries. Returns the full breakdown."""
-    eng = engine()
-    pr = one("SELECT salary, RTRIM(COALESCE(paytype,'')) AS paytype, RTRIM(COALESCE(paygroup,'')) AS paygroup "
-             "FROM payroll WHERE company=? AND emp_id=?", company, emp_id)
-    if not pr:
-        return None
-    salary = float(pr["salary"] or 0)
-    paytype = pr["paytype"] or "M"
+def _core(company, emp_id, salary, paytype, period, fixallow, fixded, loans, ot_resolved, eng):
+    """Core payslip math from already-loaded inputs. Shared by compute() and compute_batch().
+    fixallow/fixded/loans: lists of dicts; ot_resolved: list of {payitem,descrip,hours,mult,multm,cat,ts}."""
     p = eng.coparam.get(company, {"baseday": 26.083, "hrspday": 8})
     earnings, deductions = [], []
 
@@ -50,49 +43,27 @@ def compute(company, emp_id, year, month, period, ot_lines=None):
     def add_d(item, desc, amt, cat):
         deductions.append({"payitem": item, "descrip": desc, "amount": r2(amt), "cat": cat})
 
-    # 1) Basic pay
     basic = salary / 2 if paytype == "M" else salary * (p["baseday"] / 2)
     add_e("001", "Basic Pay", basic, "0", "3")
-
-    # 2) Overtime / hours-based entries (item multipliers from payitem)
-    for ot in (ot_lines or []):
+    for ot in (ot_resolved or []):
         hrs = float(ot.get("hours") or 0)
         if not hrs:
             continue
-        pit = one("SELECT RTRIM(COALESCE(descrip,payitem)) AS descrip, mult, multm, RTRIM(COALESCE(category,'7')) AS cat, "
-                  "RTRIM(COALESCE(taxscheme,'3')) AS ts FROM payitem WHERE company=? AND payitem=?", company, ot["payitem"])
-        if not pit:
-            continue
-        amt = eng.line_amount(hrs, salary, paytype, float(pit["mult"] or 0), float(pit["multm"] or 0), company)
-        add_e(ot["payitem"], pit["descrip"], amt, pit["cat"], pit["ts"], hours=hrs)
-
-    # 3) Fixed allowances
-    for a in q("SELECT f.payitem, RTRIM(COALESCE(i.descrip,f.payitem)) AS descrip, f.amount, "
-               "RTRIM(COALESCE(i.category,'3')) AS cat, RTRIM(COALESCE(i.taxscheme,'0')) AS ts "
-               "FROM fixallow f LEFT JOIN payitem i ON i.company=f.company AND i.payitem=f.payitem "
-               "WHERE f.company=? AND f.emp_id=?", company, emp_id):
-        add_e(a["payitem"], a["descrip"], float(a["amount"] or 0), a["cat"], a["ts"])
-
-    # 4) Statutory contributions — the app deducts PhilHealth+HDMF in period 1, SSS in period 2
+        amt = eng.line_amount(hrs, salary, paytype, float(ot.get("mult") or 0), float(ot.get("multm") or 0), company)
+        add_e(ot["payitem"], ot["descrip"], amt, ot.get("cat", "7"), ot.get("ts", "3"), hours=hrs)
+    for a in fixallow:
+        add_e(a["payitem"].strip(), a["descrip"], float(a["amount"] or 0), (a.get("cat") or "3"), (a.get("ts") or "0"))
     sss, ph, hd = eng.sss(salary), eng.philhealth(salary), eng.hdmf(salary)
     if period == "1":
         add_d("403", "PhilHealth Contribution", ph["ee"], "4")
         add_d("404", "HDMF Contribution", hd["ee"], "4")
     elif period == "2":
         add_d("402", "SSS Contribution", sss["ee"], "4")
+    for d in fixded:
+        add_d(d["payitem"].strip(), d["descrip"], float(d["amount"] or 0), "4")
+    for ln in loans:
+        add_d(ln["payitem"].strip(), ln["descrip"], float(ln["payded"] or 0), "8")
 
-    # 5) Fixed deductions + active loans
-    for d in q("SELECT f.payitem, RTRIM(COALESCE(i.descrip,f.payitem)) AS descrip, f.amount "
-               "FROM fixded f LEFT JOIN payitem i ON i.company=f.company AND i.payitem=f.payitem "
-               "WHERE f.company=? AND f.emp_id=?", company, emp_id):
-        add_d(d["payitem"], d["descrip"], float(d["amount"] or 0), "4")
-    for ln in q("SELECT l.payitem, RTRIM(COALESCE(i.descrip,l.payitem)) AS descrip, l.payded "
-                "FROM loans l LEFT JOIN payitem i ON i.company=l.company AND i.payitem=l.payitem "
-                "WHERE l.company=? AND l.emp_id=? AND COALESCE(l.loanamt,0)-COALESCE(l.totalpaid,0) > 0 "
-                "AND COALESCE(l.payded,0) > 0", company, emp_id):
-        add_d(ln["payitem"], ln["descrip"], float(ln["payded"] or 0), "8")
-
-    # 6) Totals
     gross = r2(sum(e["amount"] for e in earnings))
     mandatory = sum(d["amount"] for d in deductions if d["payitem"] in ("402", "403", "404"))
     reg_taxable = sum(e["amount"] for e in earnings if e["cat"] in REG_TAX_CATS and e["ts"] == "3")
@@ -102,11 +73,74 @@ def compute(company, emp_id, year, month, period, ot_lines=None):
     if tax:
         add_d("401", "Withholding Tax", tax, "4")
     total_ded = r2(sum(d["amount"] for d in deductions))
-    net = r2(gross - total_ded)
-
     return {"emp_id": emp_id, "salary": salary, "paytype": paytype, "mwe": mwe,
-            "earnings": earnings, "deductions": deductions,
-            "gross": gross, "taxable": taxable, "tax": tax, "total_ded": total_ded, "net": net}
+            "earnings": earnings, "deductions": deductions, "gross": gross, "taxable": taxable,
+            "tax": tax, "total_ded": total_ded, "net": r2(gross - total_ded),
+            "er": {"sss": sss["er"], "ec": sss["ec"], "philhealth": ph["er"], "hdmf": hd["er"]}}
+
+
+def compute(company, emp_id, year, month, period, ot_lines=None):
+    """Compute one employee's payslip for a period. ot_lines: optional [{payitem, hours}]."""
+    eng = engine()
+    pr = one("SELECT salary, RTRIM(COALESCE(paytype,'')) AS paytype FROM payroll WHERE company=? AND emp_id=?",
+             company, emp_id)
+    if not pr:
+        return None
+    fixallow = q("SELECT f.payitem, RTRIM(COALESCE(i.descrip,f.payitem)) AS descrip, f.amount, "
+                 "RTRIM(COALESCE(i.category,'3')) AS cat, RTRIM(COALESCE(i.taxscheme,'0')) AS ts "
+                 "FROM fixallow f LEFT JOIN payitem i ON i.company=f.company AND i.payitem=f.payitem "
+                 "WHERE f.company=? AND f.emp_id=?", company, emp_id)
+    fixded = q("SELECT f.payitem, RTRIM(COALESCE(i.descrip,f.payitem)) AS descrip, f.amount "
+               "FROM fixded f LEFT JOIN payitem i ON i.company=f.company AND i.payitem=f.payitem "
+               "WHERE f.company=? AND f.emp_id=?", company, emp_id)
+    loans = q("SELECT l.payitem, RTRIM(COALESCE(i.descrip,l.payitem)) AS descrip, l.payded "
+              "FROM loans l LEFT JOIN payitem i ON i.company=l.company AND i.payitem=l.payitem "
+              "WHERE l.company=? AND l.emp_id=? AND COALESCE(l.loanamt,0)-COALESCE(l.totalpaid,0)>0 "
+              "AND COALESCE(l.payded,0)>0", company, emp_id)
+    otr = []
+    for ot in (ot_lines or []):
+        pit = one("SELECT RTRIM(COALESCE(descrip,payitem)) AS descrip, mult, multm, RTRIM(COALESCE(category,'7')) AS cat, "
+                  "RTRIM(COALESCE(taxscheme,'3')) AS ts FROM payitem WHERE company=? AND payitem=?", company, ot["payitem"])
+        if pit and ot.get("hours"):
+            otr.append({"payitem": ot["payitem"], "hours": ot["hours"], **pit})
+    return _core(company, emp_id, float(pr["salary"] or 0), pr["paytype"] or "M", period,
+                 fixallow, fixded, loans, otr, eng)
+
+
+def compute_batch(company, year, month, period):
+    """Compute every active employee for a period — bulk-preloads all inputs, then computes
+    in Python (a handful of queries, not N×). Returns (rows, totals)."""
+    from collections import defaultdict
+    eng = engine()
+    emps = q("SELECT RTRIM(pr.emp_id) AS emp_id, pr.salary, RTRIM(COALESCE(pr.paytype,'')) AS paytype, "
+             "RTRIM(p.lastname)||', '||RTRIM(p.firstname) AS empname "
+             "FROM payroll pr JOIN personnel p ON p.company=pr.company AND p.emp_id=pr.emp_id "
+             "WHERE pr.company=? AND p.empsts<>'X' ORDER BY p.lastname, p.firstname", company)
+    fa = defaultdict(list)
+    for r in q("SELECT RTRIM(f.emp_id) AS emp_id, f.payitem, RTRIM(COALESCE(i.descrip,f.payitem)) AS descrip, f.amount, "
+               "RTRIM(COALESCE(i.category,'3')) AS cat, RTRIM(COALESCE(i.taxscheme,'0')) AS ts "
+               "FROM fixallow f LEFT JOIN payitem i ON i.company=f.company AND i.payitem=f.payitem WHERE f.company=?", company):
+        fa[r["emp_id"]].append(r)
+    fd = defaultdict(list)
+    for r in q("SELECT RTRIM(f.emp_id) AS emp_id, f.payitem, RTRIM(COALESCE(i.descrip,f.payitem)) AS descrip, f.amount "
+               "FROM fixded f LEFT JOIN payitem i ON i.company=f.company AND i.payitem=f.payitem WHERE f.company=?", company):
+        fd[r["emp_id"]].append(r)
+    ln = defaultdict(list)
+    for r in q("SELECT RTRIM(l.emp_id) AS emp_id, l.payitem, RTRIM(COALESCE(i.descrip,l.payitem)) AS descrip, l.payded "
+               "FROM loans l LEFT JOIN payitem i ON i.company=l.company AND i.payitem=l.payitem "
+               "WHERE l.company=? AND COALESCE(l.loanamt,0)-COALESCE(l.totalpaid,0)>0 AND COALESCE(l.payded,0)>0", company):
+        ln[r["emp_id"]].append(r)
+    rows = []
+    tot = {"gross": 0.0, "taxable": 0.0, "tax": 0.0, "total_ded": 0.0, "net": 0.0}
+    for e in emps:
+        emp = e["emp_id"]
+        r = _core(company, emp, float(e["salary"] or 0), e["paytype"] or "M", period,
+                  fa.get(emp, []), fd.get(emp, []), ln.get(emp, []), [], eng)
+        r["empname"] = e["empname"]
+        rows.append(r)
+        for k in tot:
+            tot[k] = r2(tot[k] + r[k])
+    return rows, tot
 
 
 def validate(company, year, month, period, tol=1.0):

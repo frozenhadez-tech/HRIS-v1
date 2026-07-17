@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Payroll Register (computed) · HRPayroll L98{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{{ ab.bar(back_url=url_for('dashboard', mode=mode, company=company), exit_url=url_for('dashboard', mode=mode, company=company)) }}
+{% endblock %}
+
+{% block content %}
+<div class="screen-head">
+  <h1>Payroll Register <span class="dim" style="font-weight:400;font-size:13px">(computed draft)</span></h1>
+  <p class="crumb">Every active employee computed with the verified engine · {{ comp_map.get(company, '') }}</p>
+</div>
+
+<section class="panel">
+  <form class="filters" method="get">
+    <input type="hidden" name="mode" value="{{ mode }}"><input type="hidden" name="company" value="{{ company }}">
+    <select name="year">{% for y in periods|map(attribute='payyear')|unique %}<option value="{{ y }}" {{ 'selected' if year==y }}>{{ y }}</option>{% endfor %}</select>
+    <select name="month">{% for m in range(1,13) %}<option value="{{ m }}" {{ 'selected' if month==m }}>{{ '%02d' % m }}</option>{% endfor %}</select>
+    <select name="period"><option value="1" {{ 'selected' if period=='1' }}>Period 1</option><option value="2" {{ 'selected' if period=='2' }}>Period 2</option></select>
+    <button type="submit">Compute all</button>
+  </form>
+
+  <div class="register-meta">
+    <span><strong>{{ rows|length }}</strong> employees</span><span class="rule"></span>
+    <span>Net total <strong>₱ {{ totals.net | peso }}</strong></span>
+    {% if existing %}<span class="rule"></span><span style="color:var(--stamp)">⚠ {{ existing }} rows already stored for this period</span>{% endif %}
+  </div>
+
+  <table class="ledger wide">
+    <thead><tr><th>Emp No</th><th>Name</th><th class="num">Gross</th><th class="num">Taxable</th>
+      <th class="num">W/Tax</th><th class="num">Deductions</th><th class="num">Net Pay</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td class="mono">{{ r.emp_id }}</td>
+        <td>{{ r.empname }}{% if r.mwe %} <span class="chip ok">MWE</span>{% endif %}</td>
+        <td class="num">{{ r.gross | peso }}</td>
+        <td class="num">{{ r.taxable | peso }}</td>
+        <td class="num">{{ r.tax | peso }}</td>
+        <td class="num">{{ r.total_ded | peso }}</td>
+        <td class="num strong">{{ r.net | peso }}</td>
+        <td class="row-act"><a href="{{ url_for('payroll_compute', company=company, emp_id=r.emp_id, mode=mode, year=year, month=month, period=period) }}">payslip →</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="empty">No active employees with a payroll record.</td></tr>
+    {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr class="grand"><td></td><td class="strong">TOTALS — {{ rows|length }}</td>
+        <td class="num strong">{{ totals.gross | peso }}</td><td class="num strong">{{ totals.taxable | peso }}</td>
+        <td class="num strong">{{ totals.tax | peso }}</td><td class="num strong">{{ totals.total_ded | peso }}</td>
+        <td class="num strong">{{ totals.net | peso }}</td><td></td></tr>
+    </tfoot>
+  </table>
+  <p class="note">Draft — a preview using the verified formulas (basic, OT, statutory, tax). Overtime and ad-hoc
+    earnings aren't included here; use each employee's <em>payslip →</em> to add overtime. Posting to real payroll is the next step.</p>
+</section>
+{% endblock %}

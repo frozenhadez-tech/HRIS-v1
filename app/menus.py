@@ -50,6 +50,7 @@ PAYROLL_MENU = [
         ("Additional Earnings/Deductions Entry", "r:addl_entry"),
         ("—", ""),
         ("Payroll Calculation", "e:payroll_compute"),
+        ("Payroll Register (compute all)", "e:payroll_compute_all"),
         ("Rate / Statutory Calculator", "e:calculator"),
         ("Verify Engine vs History", "e:engine_verify"),
         ("—", ""),

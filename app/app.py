@@ -750,6 +750,23 @@ def payroll_compute():
                            ot_hours={it["payitem"]: request.args.get("ot_" + it["payitem"], "") for it in ot_items})
 
 
+@app.route("/payroll/compute_all")
+def payroll_compute_all():
+    import payroll_calc as pc
+    company = sel_company()
+    periods = q("SELECT DISTINCT TOP 40 payyear, paymonth, payperiod FROM paytranh WHERE company=? "
+                "ORDER BY payyear DESC, paymonth DESC, payperiod DESC", company)
+    d0 = periods[0] if periods else {"payyear": 2025, "paymonth": 8, "payperiod": "1"}
+    year = int(request.args.get("year", type=int) or d0["payyear"])
+    month = int(request.args.get("month", type=int) or d0["paymonth"])
+    period = (request.args.get("period") or str(d0["payperiod"])).strip()
+    rows, totals = pc.compute_batch(company, year, month, period)
+    existing = one("SELECT COUNT(*) AS n FROM paytranh WHERE company=? AND payyear=? AND paymonth=? AND payperiod=?",
+                   company, year, month, period)["n"]
+    return render_template("payroll_compute_all.html", periods=periods, year=year, month=month, period=period,
+                           rows=rows, totals=totals, existing=existing)
+
+
 @app.route("/engine/verify")
 def engine_verify():
     company = sel_company()
