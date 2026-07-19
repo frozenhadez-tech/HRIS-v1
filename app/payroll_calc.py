@@ -3,6 +3,8 @@ original app does, from master setup + entered lines. Every rule here was verifi
 against the app's stored history (see CALC_SPEC.md and /engine/verify):
 
   Basic pay (monthly) = salary / 2 per semi-monthly period
+  Basic pay (daily)   = time-card hours x (daily rate / hours-per-day); full half-month
+                        (baseday/2 days) only when no time card exists for the period
   Pay line            = hours * hourly_rate * multiplier   (multm monthly / mult daily)
   SSS/PhilHealth/HDMF = statutory calculators
   Gross               = Σ earnings (categories 0,1,2,3,5,6,7)
@@ -43,9 +45,28 @@ def is_mwe(company, salary, paytype):
     return daily <= md + 0.005
 
 
-def _core(company, emp_id, salary, paytype, period, fixallow, fixded, loans, ot_resolved, eng):
+def _period_range(company, year, month, period):
+    """The period's attendance window and payable-hours cap, from the Define Pay Period
+    setup (fromdate/todate lag the calendar month — e.g. co 004's August P1 covers
+    Jul 26–Aug 10). Falls back to calendar half-months when the period isn't defined."""
+    r = one("SELECT fromdate, todate, maxhr FROM payperiod "
+            "WHERE company=? AND payyear=? AND paymonth=? AND RTRIM(payperiod)=? "
+            "ORDER BY CASE WHEN RTRIM(COALESCE(paygrp,''))='D' THEN 0 ELSE 1 END LIMIT 1",
+            company, year, month, period)
+    if r and r["fromdate"] and r["todate"]:
+        return r["fromdate"].date(), r["todate"].date(), float(r["maxhr"] or 0) or None
+    import calendar
+    if str(period).strip() == "2":
+        return (datetime.date(year, month, 16),
+                datetime.date(year, month, calendar.monthrange(year, month)[1]), None)
+    return datetime.date(year, month, 1), datetime.date(year, month, 15), None
+
+
+def _core(company, emp_id, salary, paytype, period, fixallow, fixded, loans, ot_resolved, eng,
+          dhours=None):
     """Core payslip math from already-loaded inputs. Shared by compute() and compute_batch().
-    fixallow/fixded/loans: lists of dicts; ot_resolved: list of {payitem,descrip,hours,mult,multm,cat,ts}."""
+    fixallow/fixded/loans: lists of dicts; ot_resolved: list of {payitem,descrip,hours,mult,multm,cat,ts}.
+    dhours: the period's worked time-card hours (daily-paid employees only)."""
     p = eng.coparam.get(company, {"baseday": 26.083, "hrspday": 8})
     earnings, deductions = [], []
 
@@ -55,8 +76,18 @@ def _core(company, emp_id, salary, paytype, period, fixallow, fixded, loans, ot_
     def add_d(item, desc, amt, cat):
         deductions.append({"payitem": item, "descrip": desc, "amount": r2(amt), "cat": cat})
 
-    basic = salary / 2 if paytype == "M" else salary * (p["baseday"] / 2)
-    add_e("001", "Basic Pay", basic, "0", "3")
+    # Monthly: half the salary. Daily: worked hours x (daily rate / hours-per-day) — the
+    # formula the recorded history follows exactly; without a time card yet, assume the
+    # full half-month (baseday / 2 days) so drafts for future periods stay usable.
+    if paytype == "M":
+        basic = salary / 2
+        add_e("001", "Basic Pay", basic, "0", "3")
+    elif dhours is not None:
+        basic = dhours * (salary / p["hrspday"])
+        add_e("001", "Basic Pay", basic, "0", "3", hours=dhours)
+    else:
+        basic = salary * (p["baseday"] / 2)
+        add_e("001", "Basic Pay (full period — no time card)", basic, "0", "3")
     for ot in (ot_resolved or []):
         hrs = float(ot.get("hours") or 0)
         if not hrs:
@@ -129,8 +160,16 @@ def compute(company, emp_id, year, month, period, ot_lines=None):
                   "RTRIM(COALESCE(taxscheme,'3')) AS ts FROM payitem WHERE company=? AND payitem=?", company, ot["payitem"])
         if pit and ot.get("hours"):
             otr.append({"payitem": ot["payitem"], "hours": ot["hours"], **pit})
+    dhours = None
+    if (pr["paytype"] or "M") == "D":
+        d0, d1, maxhr = _period_range(company, year, month, period)
+        r = one("SELECT SUM(LEAST(COALESCE(tlhours,0), COALESCE(NULLIF(stdhours,0),8))) AS h "
+                "FROM timecard WHERE company=? AND emp_id=? AND trdate>=? AND trdate<=?",
+                company, emp_id, d0.isoformat(), d1.isoformat())
+        if r and r["h"] is not None:
+            dhours = min(float(r["h"]), maxhr) if maxhr else float(r["h"])
     return _core(company, emp_id, float(pr["salary"] or 0), pr["paytype"] or "M", period,
-                 fixallow, fixded, loans, otr, eng)
+                 fixallow, fixded, loans, otr, eng, dhours=dhours)
 
 
 def compute_batch(company, year, month, period):
@@ -157,12 +196,19 @@ def compute_batch(company, year, month, period):
                f"WHERE l.company=? AND {LOAN_OUTSTANDING} AND COALESCE(l.payded,0)>0", company):
         ln[r["emp_id"]].append(r)
     ot = _ot_for_period(company, year, month, period)
+    d0, d1, maxhr = _period_range(company, year, month, period)
+    dh = {r["emp_id"]: (min(float(r["h"]), maxhr) if maxhr else float(r["h"])) for r in q(
+        "SELECT RTRIM(emp_id) AS emp_id, "
+        "SUM(LEAST(COALESCE(tlhours,0), COALESCE(NULLIF(stdhours,0),8))) AS h FROM timecard "
+        "WHERE company=? AND trdate>=? AND trdate<=? GROUP BY emp_id",
+        company, d0.isoformat(), d1.isoformat()) if r["h"] is not None}
     rows = []
     tot = {"gross": 0.0, "taxable": 0.0, "tax": 0.0, "total_ded": 0.0, "net": 0.0}
     for e in emps:
         emp = e["emp_id"]
         r = _core(company, emp, float(e["salary"] or 0), e["paytype"] or "M", period,
-                  fa.get(emp, []), fd.get(emp, []), ln.get(emp, []), ot.get(emp, []), eng)
+                  fa.get(emp, []), fd.get(emp, []), ln.get(emp, []), ot.get(emp, []), eng,
+                  dhours=(dh.get(emp) if (e["paytype"] or "M") == "D" else None))
         r["empname"] = e["empname"]
         rows.append(r)
         for k in tot:

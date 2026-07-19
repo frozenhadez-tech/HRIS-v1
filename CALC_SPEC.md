@@ -6,8 +6,14 @@ closed payroll history (`paytranh`). The rebuilt engine (`app/payroll_engine.py`
 
 ## Rates
 - **Daily rate** = `salary` (daily-paid, `paytype='D'`) or `salary ÷ baseday` (monthly-paid, `'M'`).
-  `baseday` and `hours/day` come from the `company` table (001: 26.083 days, 8 hrs).
+  `baseday` and `hours/day` come from the `company` table **per company** —
+  001/002: 26.083 days, 003/004: 26.1666667 days; all at 8 hrs/day.
 - **Hourly rate** = daily rate ÷ hours-per-day.
+- `otrates` is the original app's per-paygroup multiplier lookup (`otcode` 1=daily, 2=monthly, …)
+  with the night-premium percent per OT type in `nprate` (regular 10%, spl-holiday 13%,
+  legal-holiday 20%, …). The live multipliers the history follows are `payitem.mult/multm`;
+  audit note: `otrates` co 001 otcode 1 item 703 has `nprate=0.690` — a transposition of the
+  0.169 every sibling row carries (editable in-app if it ever matters).
 
 ## Pay lines (hours-based, `payitem.unmsr='H'`)
 ```
@@ -25,6 +31,18 @@ Undertime (102), Leave-without-pay (101/106/204).
 ## Basic pay & attendance
 - Monthly-paid **Basic Pay** (item 001) = `salary ÷ 2` per semi-monthly period (full);
   tardiness / undertime / absences are **separate negative lines**, not prorated into basic.
+- Daily-paid **Basic Pay** (item 001) = `paid hours × (daily rate ÷ 8)` — verified **100%**
+  across companies 002/003/004 (2025-08). The *paid hours* come from the attendance posting
+  over the period's **`payperiod` window** (`fromdate`–`todate`, which lags the calendar —
+  e.g. co 004's August P1 covers Jul 26–Aug 10 — capped at `maxhr`). The legacy posting nets
+  per-day adjustments (tardy minutes, holiday hours split to item 002) the old client computed;
+  the draft calculator approximates paid hours as Σ per-day `min(tlhours, stdhours)` within
+  the window, so drafts for legacy periods can differ by those nets while the rate law is exact.
+- **Night premium** (item 715, `unmsr='A'`; plus `NIA` allowance) — the old app paid night
+  hours × hourly × `otrates.nprate` **per the day-type the hours fell on** (10% regular
+  nights, higher on holidays); a flat 10% reproduces ~76% of 2024-25 lines. The rebuilt
+  attendance engine tracks `nphrs` per day (verified 99.9%) but the payroll draft does not
+  yet emit a 715 line — computing it exactly needs the per-day-type night split.
 
 ## Statutory & tax (employee share)
 - **SSS** — `ssstable` lookup by monthly gross → `sssee`.
