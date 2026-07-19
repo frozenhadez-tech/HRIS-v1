@@ -86,7 +86,7 @@ GRIDS = {
                  ("acctformat", "Acct Format", "m")],
     },
     "users": {
-        "title": "Users", "subtitle": "Application accounts (users) — passwords hidden",
+        "title": "Users", "subtitle": "Application accounts — create, edit, reset passwords, remove",
         "sql": "SELECT RTRIM(u.user_id) AS user_id, RTRIM(COALESCE(u.user_name,'')) AS user_name, RTRIM(COALESCE(u.class,'')) AS class, "
                "CASE WHEN u.disabled IS NULL THEN 'Active' ELSE 'Disabled' END AS state, "
                "u.lastsignon, RTRIM(COALESCE(u.currentpgm,'')) AS currentpgm, RTRIM(COALESCE(u.emp_id,'')) AS emp_id "
@@ -398,6 +398,12 @@ EDITABLE = {
     "tablecodes": {"table": "tablecode1", "pk": ["tblcode", "fldcode"], "fields": [
         ("tblcode", "Table code", "text"), ("fldcode", "Field code", "text"),
         ("descrip", "Description", "text"), ("vardata", "Value", "text"), ("applicat", "App", "text")]},
+    # staff sign-ins: global (no company), stamps change_date only; creating one seeds a
+    # generated password (shown once in the flash) and rows get a reset-password action
+    "users": {"table": "users", "pk": ["user_id"], "stamps": [("change_date", "now")], "fields": [
+        ("user_id", "User ID", "text"), ("user_name", "Full name", "text"),
+        ("class", "Class (Q/U)", "text"), ("emp_id", "Badge / Emp No", "text"),
+        ("currentpgm", "Default program", "text")]},
 }
 for _k, _meta in EDITABLE.items():
     if _k in GRIDS:

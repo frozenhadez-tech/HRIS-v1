@@ -37,6 +37,14 @@
         {% if g.edit %}
         <td class="row-actions">
           <a class="edit-lnk" href="{{ url_for('grid_row', key=key, mode=mode, company=company) }}{% for c in pkcols %}&pk_{{ c }}={{ row[c] | urlencode }}{% endfor %}">edit</a>
+          {% if key == 'users' %}
+          <form method="post" action="{{ url_for('users_resetpw', mode=mode, company=company) }}"
+                onsubmit="return confirm('Issue a NEW password for {{ row.user_id }}? The old one stops working.')">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+            <input type="hidden" name="pk_user_id" value="{{ row.user_id }}">
+            <button type="submit" class="edit-lnk">reset pw</button>
+          </form>
+          {% endif %}
           <form method="post" action="{{ url_for('grid_delete', key=key, mode=mode, company=company) }}" onsubmit="return confirm('Delete this record?')">
             <input type="hidden" name="csrf" value="{{ csrf_token() }}">
             {% for c in pkcols %}<input type="hidden" name="pk_{{ c }}" value="{{ row[c] }}">{% endfor %}

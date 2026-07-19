@@ -215,14 +215,19 @@ def grid_row(key):
     e, company = g["edit"], sel_company()
     scoped = bool(g.get("company"))
     user = session.get("user", {}).get("id", "")
+    # stamp columns vary: legacy tables carry changeby/changedate, users only change_date
+    stamps = e.get("stamps", [("changeby", "user"), ("changedate", "now")])
     if request.method == "POST":
         data = {c: _cast(request.form.get(c), t) for c, _, t in e["fields"]}
+        if e["table"] == "users" and data.get("user_id"):
+            data["user_id"] = str(data["user_id"]).strip().upper()
+        svals_stamp = [user if kind == "user" else datetime.datetime.now() for _, kind in stamps]
         if request.form.get("_update") == "1":
             where = " AND ".join(f"{c}=?" for c in e["pk"])
             wvals = [company if c == "company" else request.form.get("pk_" + c) for c in e["pk"]]
             setcols = [c for c, _, _ in e["fields"] if c not in e["pk"]]
-            sets = ", ".join(f"{c}=?" for c in setcols) + ", changeby=?, changedate=?"
-            svals = [data[c] for c in setcols] + [user, datetime.datetime.now()]
+            sets = ", ".join(f"{c}=?" for c in setcols + [s for s, _ in stamps])
+            svals = [data[c] for c in setcols] + svals_stamp
             db.execute(f"UPDATE {e['table']} SET {sets} WHERE {where}", *(svals + wvals))
             flash("Record updated.", "ok")
         else:
@@ -230,12 +235,24 @@ def grid_row(key):
             vals = [data[c] for c in cols]
             if scoped and "company" not in cols:
                 cols, vals = ["company"] + cols, [company] + vals
-            cols += ["changeby", "changedate"]
-            vals += [user, datetime.datetime.now()]
+            newpw = None
+            if e["table"] == "users":               # creating a sign-in: seed a password, shown once
+                newpw = "".join(secrets.choice("ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789")
+                                for _ in range(10))
+                # legacy NOT NULL `password` column (old client's obfuscation) gets a filler;
+                # the web app authenticates against password_hash only
+                cols = cols + ["password_hash", "password"]
+                vals = vals + [auth.hash_password(newpw), "********"]
+            cols += [s for s, _ in stamps]
+            vals += svals_stamp
             ph = ",".join("?" for _ in cols)
             try:
                 db.execute(f"INSERT INTO {e['table']} ({','.join(cols)}) VALUES ({ph})", *vals)
-                flash("Record added.", "ok")
+                if newpw:
+                    flash(f"User {data.get('user_id')} created — initial password: {newpw} "
+                          "(shown this once; hand it over securely).", "ok")
+                else:
+                    flash("Record added.", "ok")
             except Exception as ex:
                 flash("Could not add — " + (str(ex).split("\n")[0][:120]), "error")
         return redirect(url_for("screen", key=key, mode=request.args.get("mode", "PY"), company=company))
@@ -261,9 +278,28 @@ def grid_delete(key):
     e, company = g["edit"], sel_company()
     where = " AND ".join(f"{c}=?" for c in e["pk"])
     wvals = [company if c == "company" else request.form.get("pk_" + c) for c in e["pk"]]
-    db.execute(f"DELETE FROM {e['table']} WHERE {where}", *wvals)
-    flash("Record deleted.", "ok")
+    me = session.get("user", {}).get("id", "")
+    if e["table"] == "users" and (request.form.get("pk_user_id") or "").strip().upper() == me:
+        flash("You can't remove your own account while signed in with it.", "error")
+    else:
+        db.execute(f"DELETE FROM {e['table']} WHERE {where}", *wvals)
+        flash("Record deleted.", "ok")
     return redirect(url_for("screen", key=key, mode=request.args.get("mode", "PY"), company=company))
+
+
+@app.route("/s/users/resetpw", methods=["POST"])
+def users_resetpw():
+    """Issue a fresh sign-in password for a staff account (hashes are unrecoverable)."""
+    uid = (request.form.get("pk_user_id") or "").strip().upper()
+    if not uid or not one("SELECT 1 AS x FROM users WHERE RTRIM(user_id)=?", uid):
+        abort(404)
+    newpw = "".join(secrets.choice("ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789")
+                    for _ in range(10))
+    db.execute("UPDATE users SET password_hash=?, change_date=? WHERE RTRIM(user_id)=?",
+               auth.hash_password(newpw), datetime.datetime.now(), uid)
+    flash(f"New password for {uid}: {newpw} (shown this once; hand it over securely).", "ok")
+    return redirect(url_for("screen", key="users", mode=request.args.get("mode", "PY"),
+                            company=sel_company()))
 
 
 from reports import REPORTS  # noqa: E402
