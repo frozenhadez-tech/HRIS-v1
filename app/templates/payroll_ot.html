@@ -13,6 +13,51 @@
 </div>
 
 <section class="panel">
+  <h2 style="font-size:16px;margin:0 0 2px">Requests from the employee portal</h2>
+  <p class="note dim" style="margin-top:2px">Approving an <em>overtime</em> request stamps the day's time card
+    <strong>and</strong> files the payroll OT entry for that half-month (pick the OT type per row —
+    it defaults to regular overtime). Undertime approvals record the decision only.</p>
+  <table class="ledger wide">
+    <thead><tr><th>Filed</th><th>Emp No</th><th>Name</th><th>Type</th><th>For Date</th>
+      <th class="num">Hours</th><th>Reason</th><th>Status</th><th class="actions-col"></th></tr></thead>
+    <tbody>
+    {% for r in reqs %}
+      <tr>
+        <td class="mono">{{ r.created_at | dt }}</td>
+        <td class="mono">{{ r.emp_id }}</td><td>{{ r.empname }}</td>
+        <td>{{ 'Overtime' if r.rtype == 'OT' else 'Undertime' }}</td>
+        <td class="mono">{{ r.reqdate | dt }}</td>
+        <td class="num">{{ '%g' % r.hours }}</td>
+        <td>{{ r.reason }}</td>
+        <td>{{ {'P':'Pending','A':'Approved','D':'Denied'}.get(r.status, r.status) }}{% if r.decided_by %} · {{ r.decided_by }}{% endif %}</td>
+        <td class="row-actions" style="white-space:nowrap">
+          {% if r.status == 'P' %}
+          <form method="post" action="{{ url_for('payroll_ot_req', mode=mode, company=company) }}" style="display:inline-flex;gap:6px;align-items:center">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+            <input type="hidden" name="id" value="{{ r.id }}">
+            <input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ month }}"><input type="hidden" name="period" value="{{ period }}">
+            {% if r.rtype == 'OT' %}
+            <select name="payitem" title="OT pay item filed on approval">
+              {% for it in ot_items %}<option value="{{ it.payitem }}" {{ 'selected' if it.payitem == default_item }}>{{ it.payitem }} · {{ it.descrip }}</option>{% endfor %}
+            </select>
+            {% endif %}
+            <button type="submit" name="act" value="approve" class="edit-lnk">approve</button>
+            <button type="submit" name="act" value="deny" class="del-lnk"
+              onclick="return confirm('Deny this request?')">deny</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty">No requests filed from the employee portal yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="note">{{ reqs | selectattr('status', 'equalto', 'P') | list | length }} pending ·
+    employees file these from the Attendance tab on their phones and see the decision there.</p>
+</section>
+
+<section class="panel">
   <form class="filters" method="get">
     <input type="hidden" name="mode" value="{{ mode }}"><input type="hidden" name="company" value="{{ company }}">
     <select name="year">{% for y in periods|map(attribute='payyear')|unique %}<option value="{{ y }}" {{ 'selected' if year==y }}>{{ y }}</option>{% endfor %}</select>

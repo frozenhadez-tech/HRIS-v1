@@ -24,8 +24,9 @@
         <option value="ALL" {{ 'selected' if st not in ('P','A','D') }}>All</option>
       </select>
     </label>
-    <span class="fld" style="text-transform:none;letter-spacing:0">Approving an <em>overtime</em> request also stamps
-      the day's time card (OT hours + approved flag).</span>
+    <span class="fld" style="text-transform:none;letter-spacing:0">Approving an <em>overtime</em> request stamps the
+      day's time card and files the payroll OT entry (regular overtime; use
+      <a href="{{ url_for('payroll_ot', company=company, mode=mode) }}">Overtime Entry</a> to pick another OT type per row).</span>
   </form>
 
   <div class="ln-scroll">

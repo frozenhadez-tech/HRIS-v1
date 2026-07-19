@@ -889,8 +889,15 @@ def payroll_ot():
              "FROM personnel WHERE company=? AND empsts<>'X' ORDER BY lastname, firstname", company)
     ot_items = q("SELECT RTRIM(payitem) AS payitem, RTRIM(COALESCE(descrip,payitem)) AS descrip FROM payitem "
                  "WHERE company=? AND category='7' AND RTRIM(COALESCE(unmsr,''))='H' ORDER BY payitem", company)
+    reqs = q("SELECT t.id, RTRIM(t.emp_id) AS emp_id, RTRIM(p.lastname)||', '||RTRIM(COALESCE(p.firstname,'')) AS empname, "
+             "RTRIM(t.rtype) AS rtype, t.reqdate, t.hours, RTRIM(COALESCE(t.reason,'')) AS reason, "
+             "RTRIM(t.status) AS status, t.created_at, RTRIM(COALESCE(t.decided_by,'')) AS decided_by "
+             "FROM time_request t LEFT JOIN personnel p ON p.company=t.company AND p.emp_id=t.emp_id "
+             "WHERE t.company=? ORDER BY CASE WHEN RTRIM(t.status)='P' THEN 0 ELSE 1 END, "
+             "t.created_at DESC, t.id DESC LIMIT 100", company)
     return render_template("payroll_ot.html", periods=periods, year=year, month=month, period=period,
-                           entries=entries, emps=emps, ot_items=ot_items)
+                           entries=entries, emps=emps, ot_items=ot_items, reqs=reqs,
+                           default_item=_default_ot_item(company))
 
 
 @app.route("/payroll/ot/delete", methods=["POST"])
@@ -1569,33 +1576,81 @@ def timereqs():
     return render_template("timereqs.html", rows=rows, st=st, counts=counts)
 
 
-@app.route("/timereqs/act", methods=["POST"])
-def timereqs_act():
-    company = sel_company()
-    mode = request.args.get("mode", "PY")
-    rid = request.form.get("id", type=int)
-    act = (request.form.get("act") or "").strip()
-    r = one("SELECT RTRIM(emp_id) AS emp_id, RTRIM(rtype) AS rtype, reqdate, hours "
+def _default_ot_item(company):
+    """The regular-OT pay item — the sensible default when approving a request."""
+    items = q("SELECT RTRIM(payitem) AS payitem, RTRIM(COALESCE(descrip,'')) AS descrip FROM payitem "
+              "WHERE company=? AND category='7' AND RTRIM(COALESCE(unmsr,''))='H' ORDER BY payitem", company)
+    for it in items:
+        if "REG" in it["descrip"].upper():
+            return it["payitem"]
+    return items[0]["payitem"] if items else None
+
+
+def _decide_time_request(company, rid, act, user, payitem=None):
+    """Approve/deny a portal time request. Approving OVERTIME stamps the day's time card
+    (othrs + approvot, the legacy per-day approval) AND files the payroll OT entry for
+    the half-month period the date falls in — the same ot_entry the register computes from."""
+    r = one("SELECT RTRIM(emp_id) AS emp_id, RTRIM(rtype) AS rtype, reqdate, hours, RTRIM(status) AS status "
             "FROM time_request WHERE company=? AND id=?", company, rid)
     if not r or act not in ("approve", "deny"):
-        abort(400)
-    user, now = session.get("user", {}).get("id", ""), datetime.datetime.now()
+        return None
+    if r["status"] != "P":
+        return f"Request for {r['emp_id']} was already decided."
+    user_now = datetime.datetime.now()
     status = "A" if act == "approve" else "D"
     db.execute("UPDATE time_request SET status=?, decided_by=?, decided_at=? WHERE company=? AND id=?",
-               status, user, now, company, rid)
-    note = ""
+               status, user, user_now, company, rid)
+    note = f"Request {'approved' if status == 'A' else 'denied'} for {r['emp_id']}."
     if status == "A" and r["rtype"] == "OT":
         day = r["reqdate"].isoformat()
+        hours = float(r["hours"])
         if one("SELECT 1 AS x FROM timecard WHERE company=? AND emp_id=? AND trdate=?",
                company, r["emp_id"], day):
             db.execute("UPDATE timecard SET othrs=?, approvot='Y', changeby=?, changedate=? "
                        "WHERE company=? AND emp_id=? AND trdate=?",
-                       r["hours"], user, now, company, r["emp_id"], day)
-            note = f" Time card for {day} stamped with {float(r['hours']):g}h approved OT."
+                       hours, user, user_now, company, r["emp_id"], day)
+            note += f" Time card {day} stamped ({hours:g}h, approved)."
         else:
-            note = f" No time card row for {day} yet — the OT will apply once the day is recorded."
-    flash(f"Request {'approved' if status == 'A' else 'denied'} for {r['emp_id']}.{note}", "ok")
+            note += f" No time card for {day} yet — it stamps once the day is recorded."
+        item = (payitem or "").strip() or _default_ot_item(company)
+        if item:
+            per = "1" if r["reqdate"].day <= 15 else "2"
+            db.execute("INSERT INTO ot_entry (company,payyear,paymonth,payperiod,emp_id,payitem,hours,changeby,changedate) "
+                       "VALUES (?,?,?,?,?,?,?,?,?)", company, r["reqdate"].year, r["reqdate"].month, per,
+                       r["emp_id"], item, hours, user, user_now)
+            note += f" Payroll OT entry filed: {hours:g}h of {item} in {r['reqdate'].year}-{r['reqdate'].month:02d} P{per}."
+        else:
+            note += " No OT pay items configured — add the payroll entry manually."
+    return note
+
+
+@app.route("/timereqs/act", methods=["POST"])
+def timereqs_act():
+    company = sel_company()
+    mode = request.args.get("mode", "PY")
+    note = _decide_time_request(company, request.form.get("id", type=int),
+                                (request.form.get("act") or "").strip(),
+                                session.get("user", {}).get("id", ""))
+    if note is None:
+        abort(400)
+    flash(note, "ok")
     return redirect(url_for("timereqs", company=company, mode=mode, st=request.form.get("st", "P")))
+
+
+@app.route("/payroll/ot/req", methods=["POST"])
+def payroll_ot_req():
+    company = sel_company()
+    mode = request.args.get("mode", "PY")
+    note = _decide_time_request(company, request.form.get("id", type=int),
+                                (request.form.get("act") or "").strip(),
+                                session.get("user", {}).get("id", ""),
+                                payitem=request.form.get("payitem"))
+    if note is None:
+        abort(400)
+    flash(note, "ok")
+    return redirect(url_for("payroll_ot", company=company, mode=mode,
+                            year=request.form.get("year"), month=request.form.get("month"),
+                            period=request.form.get("period")))
 
 
 @app.route("/me/admin/toggle", methods=["POST"])
