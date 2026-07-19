@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Time Requests · HRPayroll L98{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{{ ab.bar(back_url=url_for('dashboard', mode=mode, company=company),
+          exit_url=url_for('dashboard', mode=mode, company=company)) }}
+{% endblock %}
+
+{% block content %}
+<div class="screen-head">
+  <h1>Time Requests</h1>
+  <p class="crumb">Overtime &amp; undertime requests from the employee portal · {{ comp_map.get(company, '') }}</p>
+</div>
+
+<section class="panel lnw">
+  <form class="bar" method="get">
+    <input type="hidden" name="mode" value="{{ mode }}"><input type="hidden" name="company" value="{{ company }}">
+    <label class="fld">Status
+      <select name="st" onchange="this.form.submit()">
+        <option value="P" {{ 'selected' if st == 'P' }}>Pending ({{ counts.get('P', 0) }})</option>
+        <option value="A" {{ 'selected' if st == 'A' }}>Approved ({{ counts.get('A', 0) }})</option>
+        <option value="D" {{ 'selected' if st == 'D' }}>Denied ({{ counts.get('D', 0) }})</option>
+        <option value="ALL" {{ 'selected' if st not in ('P','A','D') }}>All</option>
+      </select>
+    </label>
+    <span class="fld" style="text-transform:none;letter-spacing:0">Approving an <em>overtime</em> request also stamps
+      the day's time card (OT hours + approved flag).</span>
+  </form>
+
+  <div class="ln-scroll">
+    <table class="ln">
+      <thead><tr>
+        <th></th><th>Filed</th><th>Badge No.</th><th>Employee</th><th>Type</th>
+        <th>For Date</th><th class="n">Hours</th><th>Reason</th><th>Status</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td class="idx">{{ loop.index }}.</td>
+          <td class="d">{{ r.created_at | dt }}</td>
+          <td class="doc">{{ r.emp_id }}</td>
+          <td>{{ r.empname }}</td>
+          <td>{{ 'Overtime' if r.rtype == 'OT' else 'Undertime' }}</td>
+          <td class="d">{{ r.reqdate | dt }}</td>
+          <td class="n">{{ '%g' % r.hours }}</td>
+          <td>{{ r.reason }}</td>
+          <td>{{ {'P':'Pending','A':'Approved','D':'Denied'}.get(r.status, r.status) }}{% if r.decided_by %} · {{ r.decided_by }}{% endif %}</td>
+          <td class="row-actions" style="white-space:nowrap">
+            {% if r.status == 'P' %}
+            <form method="post" action="{{ url_for('timereqs_act', company=company, mode=mode) }}" style="display:inline">
+              <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+              <input type="hidden" name="id" value="{{ r.id }}"><input type="hidden" name="st" value="{{ st }}">
+              <button type="submit" name="act" value="approve" class="edit-lnk">approve</button>
+              <button type="submit" name="act" value="deny" class="del-lnk"
+                onclick="return confirm('Deny this request?')">deny</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="10" class="empty" style="text-align:center;padding:18px">No
+          {{ {'P':'pending','A':'approved','D':'denied'}.get(st, '') }} requests in {{ comp_map.get(company,'this company') }}.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="note">{{ rows | length }} request{{ '' if rows|length==1 else 's' }} shown · employees file these from
+    the Attendance tab of the mobile portal and see the decision there.</p>
+</section>
+{% endblock %}

@@ -1548,6 +1548,56 @@ def me_admin_setpin():
     return redirect(url_for("me_admin", company=company, mode=mode, qq=request.form.get("qq", "")))
 
 
+@app.route("/timereqs")
+def timereqs():
+    """Time Requests (HR) — approve or deny the OT/undertime requests employees file
+    from their phones. Approving an overtime request also stamps that day's time card
+    (othrs + approvot), the legacy per-day OT approval the attendance engine honors."""
+    company = sel_company()
+    st = (request.args.get("st") or "P").upper()
+    where, params = ["t.company=?"], [company]
+    if st in ("P", "A", "D"):
+        where.append("RTRIM(t.status)=?")
+        params.append(st)
+    rows = q("SELECT t.id, RTRIM(t.emp_id) AS emp_id, RTRIM(p.lastname)||', '||RTRIM(COALESCE(p.firstname,'')) AS empname, "
+             "RTRIM(t.rtype) AS rtype, t.reqdate, t.hours, RTRIM(COALESCE(t.reason,'')) AS reason, "
+             "RTRIM(t.status) AS status, t.created_at, RTRIM(COALESCE(t.decided_by,'')) AS decided_by "
+             "FROM time_request t LEFT JOIN personnel p ON p.company=t.company AND p.emp_id=t.emp_id "
+             "WHERE " + " AND ".join(where) + " ORDER BY t.created_at DESC, t.id DESC LIMIT 300", *params)
+    counts = {r["s"]: r["n"] for r in q(
+        "SELECT RTRIM(status) AS s, COUNT(*) AS n FROM time_request WHERE company=? GROUP BY status", company)}
+    return render_template("timereqs.html", rows=rows, st=st, counts=counts)
+
+
+@app.route("/timereqs/act", methods=["POST"])
+def timereqs_act():
+    company = sel_company()
+    mode = request.args.get("mode", "PY")
+    rid = request.form.get("id", type=int)
+    act = (request.form.get("act") or "").strip()
+    r = one("SELECT RTRIM(emp_id) AS emp_id, RTRIM(rtype) AS rtype, reqdate, hours "
+            "FROM time_request WHERE company=? AND id=?", company, rid)
+    if not r or act not in ("approve", "deny"):
+        abort(400)
+    user, now = session.get("user", {}).get("id", ""), datetime.datetime.now()
+    status = "A" if act == "approve" else "D"
+    db.execute("UPDATE time_request SET status=?, decided_by=?, decided_at=? WHERE company=? AND id=?",
+               status, user, now, company, rid)
+    note = ""
+    if status == "A" and r["rtype"] == "OT":
+        day = r["reqdate"].isoformat()
+        if one("SELECT 1 AS x FROM timecard WHERE company=? AND emp_id=? AND trdate=?",
+               company, r["emp_id"], day):
+            db.execute("UPDATE timecard SET othrs=?, approvot='Y', changeby=?, changedate=? "
+                       "WHERE company=? AND emp_id=? AND trdate=?",
+                       r["hours"], user, now, company, r["emp_id"], day)
+            note = f" Time card for {day} stamped with {float(r['hours']):g}h approved OT."
+        else:
+            note = f" No time card row for {day} yet — the OT will apply once the day is recorded."
+    flash(f"Request {'approved' if status == 'A' else 'denied'} for {r['emp_id']}.{note}", "ok")
+    return redirect(url_for("timereqs", company=company, mode=mode, st=request.form.get("st", "P")))
+
+
 @app.route("/me/admin/toggle", methods=["POST"])
 def me_admin_toggle():
     company = sel_company()

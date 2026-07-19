@@ -178,8 +178,40 @@ def attendance():
         tot["ot"] += float(r["othrs"] or 0)
     prev = (first - datetime.timedelta(days=1)).strftime("%Y-%m")
     nxtm = nxt.strftime("%Y-%m") if nxt <= today else None
+
+    reqs = q("SELECT id, RTRIM(rtype) AS rtype, reqdate, hours, RTRIM(COALESCE(reason,'')) AS reason, "
+             "RTRIM(status) AS status, created_at FROM time_request "
+             "WHERE company=? AND RTRIM(emp_id)=? ORDER BY created_at DESC, id DESC",
+             m["co"], m["emp"])
     return render_template("me_att.html", me=m, rows=rows, first=first, tot=tot,
-                           prev=prev, nxt=nxtm, active="att")
+                           prev=prev, nxt=nxtm, today=today.isoformat(),
+                           ot_reqs=[r for r in reqs if r["rtype"] == "OT"],
+                           ut_reqs=[r for r in reqs if r["rtype"] == "UT"], active="att")
+
+
+@bp.route("/timereq", methods=["POST"])
+def timereq():
+    """File an overtime or undertime request — lands as Pending for HR to decide."""
+    m = session["me"]
+    rtype = (request.form.get("rtype") or "").strip().upper()
+    reason = (request.form.get("reason") or "").strip()[:120]
+    try:
+        reqdate = datetime.date.fromisoformat((request.form.get("reqdate") or "").strip())
+    except ValueError:
+        reqdate = None
+    try:
+        hours = round(float(request.form.get("hours") or 0), 2)
+    except ValueError:
+        hours = 0
+    if rtype not in ("OT", "UT") or not reqdate or not (0 < hours <= 24) or not reason:
+        flash("Date, estimated hours (up to 24) and a reason are all required.", "error")
+    else:
+        execute("INSERT INTO time_request (company, emp_id, rtype, reqdate, hours, reason, status, created_at) "
+                "VALUES (?,?,?,?,?,?, 'P', ?)",
+                m["co"], m["emp"], rtype, reqdate.isoformat(), hours, reason, now_ph())
+        flash(f"{'Overtime' if rtype == 'OT' else 'Undertime'} request for "
+              f"{reqdate:%b %d} submitted — HR will review it.", "ok")
+    return redirect(url_for("me.attendance"))
 
 
 CONTACT_FIELDS = [("cellphone", "Cellphone"), ("telno", "Telephone"),

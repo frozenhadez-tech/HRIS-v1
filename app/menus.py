@@ -37,6 +37,7 @@ PAYROLL_MENU = [
         ("Time Card Update", "e:timecard_edit"),
         ("Time Card Inquiry", "e:timecard"),
         ("Mobile Time Clock", "e:me_admin"),
+        ("Time Requests", "e:timereqs"),
         ("—", ""),
         ("Daily Attendance Report", "r:att_daily"),
         ("Daily Overtime Report", "r:att_ot"),

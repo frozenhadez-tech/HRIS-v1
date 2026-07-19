@@ -7,6 +7,38 @@
   <a class="lnk" href="{{ url_for('me.index') }}">‹ Clock</a>
 </header>
 
+<div class="rq-btns">
+  <button type="button" class="rq rq-ot" data-open="otdlg">Overtime Request</button>
+  <button type="button" class="rq rq-ut" data-open="utdlg">Undertime Request</button>
+</div>
+
+<section class="card">
+  <h2>Time Requests</h2>
+  <p class="hint" style="margin-top:-4px">Your overtime and undertime requests and their current status.</p>
+
+  {% macro reqlist(items, kind, label) %}
+  <div class="rq-group {{ kind }}">
+    <div class="rq-lab"><span>{{ label }} ({{ items | length }})</span>
+      {% if items | length > 2 %}
+      <button type="button" class="lnk rq-more" data-more="{{ kind }}">Show {{ items|length - 2 }} more ▾</button>
+      {% endif %}
+    </div>
+    {% for r in items %}
+    <div class="rqcard {{ kind }} {{ 'xtra hidden' if loop.index > 2 }}" data-xtra="{{ kind if loop.index > 2 }}">
+      <div class="rq-top"><b>{{ r.reqdate.strftime('%a, %b %d, %Y') }}</b>
+        <span class="stpill st-{{ r.status }}">{{ {'P':'Pending','A':'Approved','D':'Denied'}.get(r.status, r.status) }}</span></div>
+      <div class="rq-reason">{{ r.reason }}</div>
+      <div class="hint">Estimated: {{ '%g' % r.hours }}h · Submitted: {{ r.created_at.strftime('%a, %b %d, %Y') }}</div>
+    </div>
+    {% else %}
+    <p class="dim" style="font-size:13px">None filed yet.</p>
+    {% endfor %}
+  </div>
+  {% endmacro %}
+  {{ reqlist(ot_reqs, 'ot', 'Overtime Requests') }}
+  {{ reqlist(ut_reqs, 'ut', 'Undertime Requests') }}
+</section>
+
 <section class="card">
   <div class="monthnav">
     <a class="lnk" href="{{ url_for('me.attendance', month=prev) }}">‹ {{ prev }}</a>
@@ -43,5 +75,54 @@
   {% endif %}
 </section>
 
+{% macro reqdlg(kind, title, verb) %}
+<dialog id="{{ kind }}dlg" class="qa">
+  <div class="qa-head">
+    <h3>{{ title }}</h3>
+    <button type="button" class="qa-x" data-qa-close aria-label="Close">✕</button>
+  </div>
+  <form method="post" action="{{ url_for('me.timereq') }}" class="form" style="margin-top:6px">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="rtype" value="{{ 'OT' if kind == 'ot' else 'UT' }}">
+    <label>For date<input type="date" name="reqdate" value="{{ today }}" required></label>
+    <label>Estimated hours<input type="number" name="hours" step="0.5" min="0.5" max="24" required
+      placeholder="e.g. 2"></label>
+    <label>Reason<input type="text" name="reason" maxlength="120" required
+      placeholder="{{ 'e.g. unloading containers' if kind == 'ot' else 'e.g. medical appointment' }}"></label>
+    <button type="submit" class="big rq-{{ kind }}" style="margin-top:4px">{{ verb }}</button>
+    <p class="hint">Goes to HR as <b>Pending</b> — you'll see the decision here.</p>
+  </form>
+</dialog>
+{% endmacro %}
+{{ reqdlg('ot', 'Overtime Request', 'Submit overtime request') }}
+{{ reqdlg('ut', 'Undertime Request', 'Submit undertime request') }}
+
 {% include "_me_nav.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  document.querySelectorAll('[data-open]').forEach(function (b) {
+    var d = document.getElementById(b.getAttribute('data-open'));
+    if (d && d.showModal) b.addEventListener('click', function () { d.showModal(); });
+  });
+  document.querySelectorAll('dialog.qa').forEach(function (d) {
+    d.addEventListener('click', function (e) {
+      if (e.target === d || (e.target.closest && e.target.closest('[data-qa-close]'))) d.close();
+    });
+  });
+  document.querySelectorAll('[data-more]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var kind = b.getAttribute('data-more'), open = b.getAttribute('data-on') === '1';
+      document.querySelectorAll('.rqcard.xtra[data-xtra="' + kind + '"]').forEach(function (c) {
+        c.classList.toggle('hidden', open);
+      });
+      b.setAttribute('data-on', open ? '0' : '1');
+      var n = document.querySelectorAll('.rqcard.xtra[data-xtra="' + kind + '"]').length;
+      b.textContent = open ? ('Show ' + n + ' more ▾') : 'Show less ▴';
+    });
+  });
+})();
+</script>
 {% endblock %}
