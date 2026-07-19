@@ -1,0 +1,38 @@
+{% extends "me_base.html" %}
+{% block title %}Payslip · {{ label }}{% endblock %}
+{% block content %}
+<header class="topbar no-print">
+  <div><strong>Payslip</strong><span class="mono dim">{{ me.emp }} · Co {{ me.co }}</span></div>
+  <a class="lnk" href="{{ url_for('me.compensation') }}">‹ Pay</a>
+</header>
+
+<section class="card slipsheet">
+  <div class="slip-head">
+    <h2 style="margin:0">{{ compname }}</h2>
+    <p class="hint" style="margin:2px 0 0">Payslip · {{ label }}{% if paydate %} · paid {{ paydate.strftime('%b %d, %Y') }}{% endif %}</p>
+    <p class="hint" style="margin:2px 0 0"><b>{{ me.name }}</b> · badge {{ me.emp }}</p>
+  </div>
+
+  <h4 class="qa-sub">Earnings</h4>
+  {% for l in earnings %}
+  <div class="qa-row"><span>{{ l.descrip }}{% if l.hrs and l.hrs > 0 %} <span class="dim">({{ '%g' % l.hrs }}h)</span>{% endif %}</span>
+    <b class="mono">{{ l.amt | peso }}</b></div>
+  {% endfor %}
+  <div class="totrow"><span>Gross pay</span><b class="mono">₱ {{ totals.gross | peso }}</b></div>
+
+  <h4 class="qa-sub" style="margin-top:14px">Deductions</h4>
+  {% for l in deductions %}
+  <div class="qa-row"><span>{{ l.descrip }}</span><b class="mono">{{ l.amt | peso }}</b></div>
+  {% else %}
+  <p class="dim" style="font-size:13px">None this period.</p>
+  {% endfor %}
+  <div class="totrow"><span>Total deductions</span><b class="mono">₱ {{ totals.deductions | peso }}</b></div>
+
+  <div class="totrow big" style="margin-top:14px"><span>NET PAY</span><b class="mono">₱ {{ totals.net | peso }}</b></div>
+  <p class="hint">Official recorded payroll · taxable this period ₱ {{ totals.taxable | peso }}.</p>
+
+  <button type="button" class="big no-print" onclick="window.print()" style="margin-top:10px">Print / save as PDF</button>
+</section>
+
+<div class="no-print">{% include "_me_nav.html" %}</div>
+{% endblock %}

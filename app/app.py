@@ -1716,8 +1716,8 @@ def payslip(company, emp_id):
             totals[sysitems[code]] = amt
         elif code.startswith("9") or code.startswith("Z"):
             continue  # employer shares / provident — not on employee payslip body
-        elif cat == "4":
-            deductions.append(ln)   # statutory + loan deductions (stored positive) → total deductions (902)
+        elif cat in ("4", "8", "9"):
+            deductions.append(ln)   # statutory (4), loans (8), other deductions (9) — the parts of 902
         else:
             earnings.append(ln)     # basic/OT/allowances; attendance adjustments net into gross (900)
     return render_template("payslip.html", p=p, company=company, emp_id=emp_id,

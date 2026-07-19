@@ -469,20 +469,67 @@ def compensation():
     except Exception:
         pass                                             # no payroll setup yet — structure still shows
 
-    latest = one("SELECT payyear, paymonth, RTRIM(payperiod) AS pp, "
-                 "SUM(CASE WHEN RTRIM(payitem)='903' THEN tramount ELSE 0 END) AS net "
-                 "FROM paytranh WHERE company=? AND RTRIM(emp_id)=? "
-                 "GROUP BY payyear, paymonth, payperiod "
-                 "ORDER BY payyear DESC, paymonth DESC, payperiod DESC LIMIT 1", m["co"], m["emp"])
-    latest_label = ""
-    if latest:
-        latest_label = (f"{datetime.date(int(latest['payyear']), int(latest['paymonth']), 1):%b %Y}"
-                        f" · {PP_LABEL.get(latest['pp'], latest['pp'])}")
+    slips = []
+    for s in q("SELECT payyear AS y, paymonth AS mo, RTRIM(payperiod) AS p, MAX(trdate1) AS paydate, "
+               "SUM(CASE WHEN RTRIM(payitem)='903' THEN tramount ELSE 0 END) AS net "
+               "FROM paytranh WHERE company=? AND RTRIM(emp_id)=? "
+               "GROUP BY payyear, paymonth, payperiod "
+               "ORDER BY payyear DESC, paymonth DESC, payperiod DESC", m["co"], m["emp"]):
+        y, mo, p = int(s["y"]), int(s["mo"]), s["p"]
+        label = f"{datetime.date(y, mo, 1):%b %Y} · {PP_LABEL.get(p, p)}"
+        slips.append({"y": y, "mo": mo, "p": p, "label": label,
+                      "title": s["paydate"].strftime("%Y-%m-%d") if s["paydate"] else label,
+                      "net": float(s["net"] or 0)})
+    latest = slips[0] if slips else None
     return render_template("me_comp.html", me=m, pt=pt, salary=salary, allow=allow_m,
                            equiv=equiv, total_monthly=round(equiv + allow_m, 2),
                            annual=annual, monthly=monthly, others=others,
-                           latest=latest, latest_label=latest_label,
-                           month_name=today.strftime("%B %Y"), active="comp")
+                           latest=latest, latest_label=(latest["label"] if latest else ""),
+                           slips=slips, month_name=today.strftime("%B %Y"), active="comp")
+
+
+@bp.route("/payslip")
+def payslip():
+    """One of the employee's own payslips, straight from the recorded payroll lines —
+    the same aggregation the staff payslip uses (category 4 = deductions, 9xx/Z = employer
+    shares kept off the slip, 900/902/903 = the official totals)."""
+    m = session["me"]
+    year = request.args.get("y", type=int)
+    month = request.args.get("mo", type=int)
+    period = (request.args.get("p") or "").strip()
+    if not (year and month and period):
+        abort(404)
+    lines = q("SELECT t.payitem, RTRIM(COALESCE(MAX(i.descrip), t.payitem)) AS descrip, "
+              "MAX(i.category) AS category, SUM(t.trhours) AS hrs, SUM(t.tramount) AS amt "
+              "FROM paytranh t LEFT JOIN payitem i ON i.company=t.company AND i.payitem=t.payitem "
+              "WHERE t.company=? AND RTRIM(t.emp_id)=? AND t.payyear=? AND t.paymonth=? AND t.payperiod=? "
+              "GROUP BY t.payitem ORDER BY t.payitem", m["co"], m["emp"], year, month, period)
+    if not lines:
+        abort(404)
+    sysitems = {"900": "gross", "901": "taxable", "902": "deductions", "903": "net"}
+    totals = {v: 0.0 for v in sysitems.values()}
+    earnings, deductions = [], []
+    for ln in lines:
+        code = ln["payitem"].strip()
+        amt = float(ln["amt"] or 0)
+        ln["amt"] = amt
+        cat = str(ln["category"]).strip() if ln["category"] is not None else ""
+        if code in sysitems:
+            totals[sysitems[code]] = amt
+        elif code.startswith("9") or code.startswith("Z"):
+            continue
+        elif cat in ("4", "8", "9"):    # statutory/tax, loans, other deductions — all inside 902
+            deductions.append(ln)
+        else:
+            earnings.append(ln)
+    paydate = one("SELECT MAX(trdate1) AS d FROM paytranh WHERE company=? AND RTRIM(emp_id)=? "
+                  "AND payyear=? AND paymonth=? AND payperiod=?", m["co"], m["emp"], year, month, period)
+    comp = one("SELECT RTRIM(companynam) AS n FROM company WHERE RTRIM(company)=?", m["co"])
+    label = f"{datetime.date(year, month, 1):%B %Y} · {PP_LABEL.get(period, period)}"
+    return render_template("me_payslip.html", me=m, label=label,
+                           paydate=(paydate["d"] if paydate else None),
+                           earnings=earnings, deductions=deductions, totals=totals,
+                           compname=(comp["n"] if comp else m["co"]), active="comp")
 
 
 @bp.route("/manifest.json")

@@ -171,6 +171,24 @@ dialog.qa::backdrop { background: rgba(24, 22, 16, .5); }
 .stpill.st-A { background: #e3efe5; color: var(--go); border: 1px solid #b9d4bb; }
 .stpill.st-D { background: #f7e9e7; color: var(--stamp); border: 1px solid #dcb8ae; }
 
+/* payroll records */
+.slip { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; background: #fffdf6; }
+.slip.hidden { display: none; }
+.slip-l { flex: 1; min-width: 0; }
+.slip-l b { display: block; font-size: 15px; }
+.slip-l .hint { display: block; margin-top: 1px; }
+.slip .lnk { white-space: nowrap; font-weight: 700; }
+.viewall { display: block; width: 100%; margin-top: 10px; padding: 12px; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--paper-deep); font-family: var(--serif); font-weight: 700;
+  font-size: 14px; color: var(--ink); cursor: pointer; }
+.slipsheet .qa-row { border-bottom: 1px dashed var(--line); }
+@media print {
+  .no-print, .tabbar, .flash { display: none !important; }
+  body { padding-bottom: 0; background: #fff; }
+  .card { border: 0; box-shadow: none; }
+}
+
 /* bottom tab bar */
 body { padding-bottom: 66px; }
 .tabbar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; z-index: 10;

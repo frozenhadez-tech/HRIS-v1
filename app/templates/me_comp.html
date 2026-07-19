@@ -94,5 +94,40 @@
 </section>
 {% endif %}
 
+<section class="card">
+  <h2>Recent Payroll Records</h2>
+  <p class="hint" style="margin-top:-4px">Your recorded payslips — tap one to open it.</p>
+  {% for s in slips %}
+  <div class="slip {{ 'xtra hidden' if loop.index > 3 }}">
+    <div class="slip-l">
+      <b class="mono">{{ s.title }}</b>
+      <span class="hint">{{ s.label }} · Net Pay: ₱ {{ s.net | peso }}</span>
+    </div>
+    <span class="stpill st-A">RECORDED</span>
+    <a class="lnk" href="{{ url_for('me.payslip', y=s.y, mo=s.mo, p=s.p) }}">View ›</a>
+  </div>
+  {% else %}
+  <p class="dim">No payroll records yet.</p>
+  {% endfor %}
+  {% if slips | length > 3 %}
+  <button type="button" class="viewall" id="slipall" data-on="0">View All Payroll Records ({{ slips | length }})</button>
+  {% endif %}
+</section>
+
 {% include "_me_nav.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var b = document.getElementById('slipall');
+  if (!b) return;
+  b.addEventListener('click', function () {
+    var open = b.getAttribute('data-on') === '1';
+    document.querySelectorAll('.slip.xtra').forEach(function (s) { s.classList.toggle('hidden', open); });
+    b.setAttribute('data-on', open ? '0' : '1');
+    b.textContent = open ? 'View All Payroll Records ({{ slips | length }})' : 'Show fewer';
+  });
+})();
+</script>
 {% endblock %}
