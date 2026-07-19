@@ -546,6 +546,42 @@ EMP_FIELDS = [
 ]
 DATE_FIELDS = {"birthdate", "datehired", "datereg"}
 
+_WIDTHS = {}
+
+
+def _personnel_widths():
+    """personnel column -> max characters (cached; the legacy schema is full of 1-3 char code columns)."""
+    if not _WIDTHS:
+        for r in q("SELECT column_name AS c, character_maximum_length AS n "
+                   "FROM information_schema.columns WHERE table_name='personnel' "
+                   "AND character_maximum_length IS NOT NULL"):
+            _WIDTHS[r["c"]] = int(r["n"])
+    return _WIDTHS
+
+
+def _length_errors(form):
+    """Reject values the legacy columns can't hold — a message beats a 500."""
+    w = _personnel_widths()
+    labels = dict(EMP_FIELDS)
+    errs = []
+    for f, _ in EMP_FIELDS:
+        v = (form.get(f) or "").strip()
+        if v and f in w and len(v) > w[f]:
+            errs.append(f"{labels[f]}: “{v}” is too long (maximum {w[f]} characters — use the code).")
+    return errs
+
+
+def _code_opts(tbl):
+    """Dropdown options from tablecode1 (NAT nationality, RLG religion, REL relationship, CST civil status)."""
+    return q("SELECT RTRIM(fldcode) AS code, RTRIM(descrip) AS descrip FROM tablecode1 "
+             "WHERE tblcode=? AND RTRIM(fldcode)<>'' ORDER BY descrip", tbl)
+
+
+def _emp_form_lookups(company):
+    return {"nats": _code_opts("NAT"), "rlgs": _code_opts("RLG"),
+            "rels": _code_opts("REL"), "csts": _code_opts("CST"),
+            **_assignment_lookups(company)}
+
 
 def _assignment_lookups(company):
     """Option lists (code + description) for the Assignment dropdowns, scoped to a company.
@@ -586,6 +622,7 @@ def employee_new():
             errors.append("Last name is required.")
         if emp_id and one("SELECT 1 AS x FROM personnel WHERE company=? AND emp_id=?", company, emp_id):
             errors.append(f"Employee {emp_id} already exists in company {company}.")
+        errors += _length_errors(request.form)
         if not errors:
             cols, vals = ["company", "emp_id"], [company, emp_id]
             for f, _ in EMP_FIELDS:
@@ -600,7 +637,7 @@ def employee_new():
             flash(e, "error")
     return render_template("employee_new.html", est=est, form=request.form, is_edit=False,
                            heading="Add Employee", action_url=url_for("employee_new", mode=mode),
-                           **_assignment_lookups(request.form.get("company") or sel_company()))
+                           **_emp_form_lookups(request.form.get("company") or sel_company()))
 
 
 @app.route("/employee/<company>/<emp_id>/edit", methods=["GET", "POST"])
@@ -611,9 +648,11 @@ def employee_edit(company, emp_id):
     if not one("SELECT 1 AS x FROM personnel WHERE company=? AND emp_id=?", company, emp_id):
         abort(404)
     if request.method == "POST":
+        errors = []
         if not (request.form.get("lastname") or "").strip():
-            flash("Last name is required.", "error")
-        else:
+            errors.append("Last name is required.")
+        errors += _length_errors(request.form)
+        if not errors:
             sets, vals = [], []
             for f, _ in EMP_FIELDS:
                 v = (request.form.get(f) or "").strip()
@@ -623,6 +662,8 @@ def employee_edit(company, emp_id):
             db.execute(f"UPDATE personnel SET {','.join(sets)} WHERE company=? AND emp_id=?", *vals)
             flash(f"Employee {emp_id} updated.", "ok")
             return redirect(url_for("employee", company=company, emp_id=emp_id, mode=mode))
+        for e in errors:
+            flash(e, "error")
         f = request.form
     else:
         cols = "company, emp_id, " + ", ".join(c for c, _ in EMP_FIELDS)
@@ -637,7 +678,7 @@ def employee_edit(company, emp_id):
                            heading="Edit Employee",
                            action_url=url_for("employee_edit", company=company, emp_id=emp_id, mode=mode),
                            back_url=url_for("employee", company=company, emp_id=emp_id, mode=mode),
-                           **_assignment_lookups(company))
+                           **_emp_form_lookups(company))
 
 
 @app.route("/employee/<company>/<emp_id>/delete", methods=["POST"])

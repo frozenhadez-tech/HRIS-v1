@@ -65,16 +65,11 @@
           <option value="F" {{ 'selected' if f.get('sex')=='F' }}>Female</option>
         </select>
       </label>
-      <label>Civil status
-        <select name="civilsts">
-          {% for code,lab in [('','—'),('S','Single'),('M','Married'),('W','Widowed'),('SP','Separated')] %}
-          <option value="{{ code }}" {{ 'selected' if f.get('civilsts')==code }}>{{ lab }}</option>{% endfor %}
-        </select>
-      </label>
+      <label>Civil status{{ codesel('civilsts', f.get('civilsts'), csts) }}</label>
       <label>Birth date<input type="date" name="birthdate" value="{{ f.get('birthdate','') }}"></label>
-      <label>Nationality<input type="text" name="nationality" value="{{ f.get('nationality','Filipino') }}"></label>
-      <label>Religion<input type="text" name="religion" value="{{ f.get('religion','') }}"></label>
-      <label>Blood type<input type="text" name="bloodtype" value="{{ f.get('bloodtype','') }}"></label>
+      <label>Nationality{{ codesel('nationality', f.get('nationality') or ('FIL' if not is_edit else ''), nats) }}</label>
+      <label>Religion{{ codesel('religion', f.get('religion'), rlgs) }}</label>
+      <label>Blood type<input type="text" name="bloodtype" value="{{ f.get('bloodtype','') }}" maxlength="3" placeholder="e.g. O+"></label>
     </div>
   </section>
 
@@ -85,7 +80,7 @@
       <label>Barangay<input type="text" name="barangay" value="{{ f.get('barangay','') }}"></label>
       <label>City / Town<input type="text" name="addrcity" value="{{ f.get('addrcity','') }}"></label>
       <label>Province<input type="text" name="addrprov" value="{{ f.get('addrprov','') }}"></label>
-      <label>Zip<input type="text" name="zipcode" value="{{ f.get('zipcode','') }}"></label>
+      <label>Zip<input type="text" name="zipcode" value="{{ f.get('zipcode','') }}" maxlength="6"></label>
       <label>Telephone<input type="text" name="telno" value="{{ f.get('telno','') }}"></label>
       <label>Cellphone<input type="text" name="cellphone" value="{{ f.get('cellphone','') }}"></label>
     </div>
@@ -125,7 +120,7 @@
     <h2>Emergency contact</h2>
     <div class="form-grid">
       <label>Name<input type="text" name="contactper" value="{{ f.get('contactper','') }}"></label>
-      <label>Relationship<input type="text" name="contactrel" value="{{ f.get('contactrel','') }}"></label>
+      <label>Relationship{{ codesel('contactrel', f.get('contactrel'), rels) }}</label>
       <label>Telephone<input type="text" name="contacttel" value="{{ f.get('contacttel','') }}"></label>
     </div>
   </section>
