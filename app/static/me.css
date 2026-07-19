@@ -193,6 +193,22 @@ dialog.qa::backdrop { background: rgba(24, 22, 16, .5); }
 .lv-bal { margin-bottom: 12px; }
 .lv-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; }
 .rqcard.lv { border-left-color: var(--go); }
+.fyrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.fysel { display: flex; align-items: center; gap: 14px; font-size: 17px; }
+.gobtn { background: var(--go); padding: 12px 22px; border-radius: 10px; font-size: 15px; }
+.stat .hint { display: block; margin-top: 2px; }
+.stat.tint-ok { background: #ecf3ec; border-color: #b9d4bb; }
+.stat.tint-warn { background: #fdf3d8; border-color: #e5d9a8; }
+.regbadge { display: inline-block; background: #ecf3ec; border: 1px solid #b9d4bb; border-radius: 999px;
+  padding: 3px 14px; font-size: 12px; font-weight: 600; }
+.lreg { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px;
+  background: #fffdf6; }
+.lreg.hidden { display: none; }
+.durbox { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  background: #ecf3ec; border: 1px solid #b9d4bb; border-radius: 10px; padding: 9px 12px;
+  font-size: 13.5px; font-weight: 600; }
+.withdraw { border: 0; background: none; color: var(--stamp); font-size: 13px; cursor: pointer; }
+.stpill.st-C { background: var(--paper-deep); color: var(--ink-soft); border: 1px solid var(--line); }
 
 /* bottom tab bar */
 body { padding-bottom: 66px; }

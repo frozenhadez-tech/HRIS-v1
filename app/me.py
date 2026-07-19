@@ -119,9 +119,10 @@ def index():
 
 @bp.route("/leave")
 def leave():
-    """Leave management — balances from the official `leaves` entitlements, the
-    employee's portal requests, and their recorded leaves (leavetran)."""
+    """Leave management — balances from the official `leaves` entitlements, analytics
+    and a full registry of the employee's requests for a year, and recorded leaves."""
     m = session["me"]
+    today = now_ph().date()
     balances = q("SELECT RTRIM(l.lvcode) AS code, RTRIM(COALESCE(i.descrip, l.lvcode)) AS descrip, "
                  "COALESCE(l.dayern,0) AS earned, COALESCE(l.dayuse,0) AS used "
                  "FROM leaves l LEFT JOIN payitem i ON i.company=l.company AND i.payitem=l.lvcode "
@@ -133,20 +134,66 @@ def leave():
         "SELECT DISTINCT RTRIM(l.lvcode) AS code, RTRIM(COALESCE(i.descrip, l.lvcode)) AS descrip "
         "FROM leaves l LEFT JOIN payitem i ON i.company=l.company AND i.payitem=l.lvcode "
         "WHERE l.company=? ORDER BY 1", m["co"])
-    reqs = q("SELECT lr.id, RTRIM(lr.payitem) AS code, RTRIM(COALESCE(i.descrip, lr.payitem)) AS descrip, "
-             "lr.frdate, lr.todate, lr.days, RTRIM(COALESCE(lr.reason,'')) AS reason, "
-             "RTRIM(lr.status) AS status, lr.created_at "
-             "FROM leave_request lr LEFT JOIN payitem i ON i.company=lr.company AND i.payitem=lr.payitem "
-             "WHERE lr.company=? AND RTRIM(lr.emp_id)=? ORDER BY lr.created_at DESC, lr.id DESC",
-             m["co"], m["emp"])
+
+    all_reqs = q("SELECT lr.id, RTRIM(lr.payitem) AS code, RTRIM(COALESCE(i.descrip, lr.payitem)) AS descrip, "
+                 "lr.frdate, lr.todate, lr.days, RTRIM(COALESCE(lr.reason,'')) AS reason, "
+                 "RTRIM(lr.status) AS status, lr.created_at, RTRIM(COALESCE(lr.decided_by,'')) AS decided_by, "
+                 "lr.decided_at FROM leave_request lr "
+                 "LEFT JOIN payitem i ON i.company=lr.company AND i.payitem=lr.payitem "
+                 "WHERE lr.company=? AND RTRIM(lr.emp_id)=? ORDER BY lr.created_at DESC, lr.id DESC",
+                 m["co"], m["emp"])
+    years = sorted({r["frdate"].year for r in all_reqs} | {today.year}, reverse=True)
+    year = request.args.get("year", type=int) or today.year
+    reqs = []
+    for r in all_reqs:
+        if r["frdate"].year != year:
+            continue
+        r["days"] = float(r["days"])
+        fr, to = r["frdate"], r["todate"]
+        r["durlabel"] = (f"{fr:%b %d} – {to:%d, %Y}" if (fr.year, fr.month) == (to.year, to.month)
+                         else f"{fr:%b %d} – {to:%b %d, %Y}")
+        r["submitted"] = r["created_at"].astimezone(PH).strftime("%b %d, %Y · %I:%M %p · %A")
+        reqs.append(r)
+
+    pend = [r for r in reqs if r["status"] == "P"]
+    appr = [r for r in reqs if r["status"] == "A"]
+    deni = [r for r in reqs if r["status"] == "D"]
+    stats = {
+        "available": max(0.0, round(sum(b["left"] for b in balances)
+                                    - sum(r["days"] for r in pend), 2)),
+        "approved": len(appr),
+        "rate": round(len(appr) / (len(appr) + len(deni)) * 100) if (appr or deni) else None,
+        "pending": len(pend),
+        "used": round(sum(r["days"] for r in appr), 2),
+    }
+
     taken = q("SELECT RTRIM(lt.payitem) AS code, RTRIM(COALESCE(i.descrip, lt.payitem)) AS descrip, "
               "lt.frdate, lt.todate, RTRIM(COALESCE(lt.reason,'')) AS reason "
               "FROM leavetran lt LEFT JOIN payitem i ON i.company=lt.company AND i.payitem=lt.payitem "
               "WHERE lt.company=? AND RTRIM(lt.emp_id)=? ORDER BY lt.frdate DESC LIMIT 8",
               m["co"], m["emp"])
     return render_template("me_leave.html", me=m, balances=balances, types=types,
-                           reqs=reqs, taken=taken, today=now_ph().date().isoformat(),
-                           active="leave")
+                           reqs=reqs, taken=taken, today=today.isoformat(),
+                           year=year, years=years, stats=stats, active="leave")
+
+
+@bp.route("/leave/withdraw", methods=["POST"])
+def leave_withdraw():
+    """An employee can pull back their own request while it's still pending."""
+    m = session["me"]
+    rid = request.form.get("id", type=int)
+    r = one("SELECT RTRIM(status) AS status FROM leave_request "
+            "WHERE company=? AND RTRIM(emp_id)=? AND id=?", m["co"], m["emp"], rid)
+    if not r:
+        abort(404)
+    if r["status"] != "P":
+        flash("That request was already decided — ask HR if it needs changing.", "error")
+    else:
+        execute("UPDATE leave_request SET status='C', decided_at=? "
+                "WHERE company=? AND RTRIM(emp_id)=? AND id=?",
+                datetime.datetime.now(), m["co"], m["emp"], rid)
+        flash("Request withdrawn.", "ok")
+    return redirect(url_for("me.leave"))
 
 
 @bp.route("/leave/request", methods=["POST"])

@@ -1,41 +1,92 @@
 {% extends "me_base.html" %}
 {% block title %}Leave{% endblock %}
+{% set PILL = {'P': 'Pending', 'A': 'Approved', 'D': 'Denied', 'C': 'Cancelled'} %}
 {% block content %}
 <header class="topbar">
-  <div><strong>{{ me.name }}</strong><span class="mono dim">{{ me.emp }} · Co {{ me.co }}</span></div>
+  <div><strong>Leave Management</strong><span class="mono dim">{{ me.emp }} · Co {{ me.co }}</span></div>
   <a class="lnk" href="{{ url_for('me.logout') }}">Sign out</a>
 </header>
 
+<section class="card fyrow">
+  <div class="fysel mono">
+    {% if (year - 1) in years or year - 1 >= years[-1] %}<a class="lnk" href="{{ url_for('me.leave', year=year - 1) }}">‹</a>{% endif %}
+    <b>FY {{ year }}</b>
+    {% if (year + 1) in years %}<a class="lnk" href="{{ url_for('me.leave', year=year + 1) }}">›</a>{% endif %}
+  </div>
+  <button type="button" class="rq gobtn" id="lvbtn">+ Request</button>
+</section>
+
 <section class="card">
-  <h2>Leave Balances</h2>
+  <h2>Leave Analytics</h2>
+  <p class="hint" style="margin-top:-4px">FY {{ year }} overview — live from your requests and balances.</p>
+  <div class="statgrid">
+    <div class="stat tint-ok"><span class="k">Days available</span>
+      <span class="v mono">{{ '%g' % stats.available }}</span>
+      <span class="hint">Leave you can still use (pending counts against this)</span></div>
+    <div class="stat tint-ok"><span class="k">Approved</span>
+      <span class="v mono">{{ stats.approved }}</span>
+      <span class="hint">{{ (stats.rate ~ '% rate') if stats.rate is not none else 'No decisions yet' }}</span></div>
+    <div class="stat tint-warn"><span class="k">Pending</span>
+      <span class="v mono">{{ stats.pending }}</span>
+      <span class="hint">Awaiting review</span></div>
+    <div class="stat"><span class="k">Days used</span>
+      <span class="v mono">{{ '%g' % stats.used }}</span>
+      <span class="hint">Approved leave days this year (from your requests)</span></div>
+  </div>
+
+  <h4 class="qa-sub" style="margin-top:14px">Balance by leave type</h4>
   {% for b in balances %}
   <div class="lv-bal">
     <div class="lv-top"><b>{{ b.descrip }}</b>
-      <span class="mono"><b>{{ '%g' % b.left }}</b> <span class="dim">of {{ '%g' % b.earned }} left</span></span></div>
+      <span class="mono"><b>{{ '%g' % b.left }}</b> <span class="dim">available</span></span></div>
     <div class="bar"><i style="width:{{ ((b.left / b.earned * 100) if b.earned else 0) | round(1) }}%"></i></div>
-    <p class="hint" style="margin:2px 0 0">Used {{ '%g' % b.used }} day{{ 's' if b.used != 1 }}.</p>
+    <p class="hint" style="margin:2px 0 0">{{ '%g' % b.used }} used of {{ '%g' % b.earned }} allocated.</p>
   </div>
   {% else %}
   <p class="dim">No leave entitlements are set up for you yet — ask HR.</p>
   {% endfor %}
-  <button type="button" class="big" id="lvbtn" style="margin-top:12px">File Leave Request</button>
 </section>
 
 <section class="card">
-  <h2>Leave Requests</h2>
-  <p class="hint" style="margin-top:-4px">Your requests and their current status.</p>
+  <h2>Leave Registry</h2>
+  <p class="hint" style="margin-top:-4px">Complete audit trail · status tracking · approval history.</p>
+  <p class="regbadge mono">{{ reqs | length }} record{{ '' if reqs|length == 1 else 's' }} · FY {{ year }}</p>
+
   {% for r in reqs %}
-  <div class="rqcard lv {{ 'xtra hidden' if loop.index > 3 }}">
-    <div class="rq-top"><b>{{ r.frdate.strftime('%b %d') }}{% if r.todate != r.frdate %} – {{ r.todate.strftime('%b %d, %Y') }}{% else %}, {{ r.frdate.strftime('%Y') }}{% endif %}</b>
-      <span class="stpill st-{{ r.status }}">{{ {'P':'Pending','A':'Approved','D':'Denied'}.get(r.status, r.status) }}</span></div>
-    <div class="rq-reason">{{ r.descrip }} · {{ r.reason }}</div>
-    <div class="hint">{{ '%g' % r.days }} day{{ 's' if r.days != 1 }} · Submitted: {{ r.created_at.strftime('%a, %b %d, %Y') }}</div>
+  <div class="lreg {{ 'xtra hidden' if loop.index > 3 }}">
+    <div class="rq-top"><b>{{ r.descrip }}</b>
+      <span class="stpill st-{{ r.status }}">{{ PILL.get(r.status, r.status) }}</span></div>
+    <p class="hint mono" style="margin:1px 0 8px">ID: #{{ '%06d' % r.id }}</p>
+    <div class="durbox">
+      <span>Duration</span>
+      <span class="mono" style="text-align:right"><b>{{ '%g' % r.days }} Day{{ 's' if r.days != 1 }}</b><br>{{ r.durlabel }}</span>
+    </div>
+    <div class="kv2" style="margin-top:8px">
+      <div><span class="k">Start date</span><span class="v">{{ r.frdate.strftime('%b %d, %Y') }}</span>
+        <span class="hint">{{ r.frdate.strftime('%A') }}</span></div>
+      <div><span class="k">End date</span><span class="v">{{ r.todate.strftime('%b %d, %Y') }}</span>
+        <span class="hint">{{ r.todate.strftime('%A') }}</span></div>
+    </div>
+    <div style="margin-top:6px"><span class="k">Reason</span><span class="v">{{ r.reason }}</span></div>
+    <div style="margin-top:6px"><span class="k">Submitted</span><span class="v" style="font-size:13px">{{ r.submitted }}</span></div>
+    {% if r.decided_by %}
+    <div style="margin-top:6px"><span class="k">Decided</span>
+      <span class="v" style="font-size:13px">by {{ r.decided_by }}{% if r.decided_at %} · {{ r.decided_at.strftime('%b %d, %Y') }}{% endif %}</span></div>
+    {% endif %}
+    {% if r.status == 'P' %}
+    <form method="post" action="{{ url_for('me.leave_withdraw') }}" style="margin-top:8px;text-align:right"
+          onsubmit="return confirm('Withdraw this leave request?')">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <input type="hidden" name="id" value="{{ r.id }}">
+      <button type="submit" class="lnk withdraw">Withdraw request</button>
+    </form>
+    {% endif %}
   </div>
   {% else %}
-  <p class="dim" style="font-size:13px">None filed yet.</p>
+  <p class="dim" style="font-size:13px">No requests filed for {{ year }} yet.</p>
   {% endfor %}
   {% if reqs | length > 3 %}
-  <button type="button" class="viewall" id="lvmore" data-on="0">Show all requests ({{ reqs | length }})</button>
+  <button type="button" class="viewall" id="lvmore" data-on="0">Show all {{ reqs | length }} records</button>
   {% endif %}
 </section>
 
@@ -87,9 +138,9 @@
   var more = document.getElementById('lvmore');
   if (more) more.addEventListener('click', function () {
     var open = more.getAttribute('data-on') === '1';
-    document.querySelectorAll('.rqcard.xtra').forEach(function (c) { c.classList.toggle('hidden', open); });
+    document.querySelectorAll('.lreg.xtra').forEach(function (c) { c.classList.toggle('hidden', open); });
     more.setAttribute('data-on', open ? '0' : '1');
-    more.textContent = open ? 'Show all requests ({{ reqs | length }})' : 'Show fewer';
+    more.textContent = open ? 'Show all {{ reqs | length }} records' : 'Show fewer';
   });
 })();
 </script>
