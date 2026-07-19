@@ -1,13 +1,7 @@
 {% extends "me_base.html" %}
 {% block title %}Sign in{% endblock %}
 {% block content %}
-<header class="brand">
-  <img src="{{ url_for('static', filename='clock-icon.svg') }}" alt="" width="56" height="56">
-  <h1>Time Clock</h1>
-  <p class="sub">L98 Brokerage &amp; Logistics</p>
-</header>
-
-<form method="post" class="card form">
+<form method="post" class="card form" style="margin-top:26px">
   <input type="hidden" name="csrf" value="{{ csrf_token() }}">
   <label>Company
     <select name="company" required>
