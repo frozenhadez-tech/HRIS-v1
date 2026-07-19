@@ -38,11 +38,13 @@ Undertime (102), Leave-without-pay (101/106/204).
   per-day adjustments (tardy minutes, holiday hours split to item 002) the old client computed;
   the draft calculator approximates paid hours as Σ per-day `min(tlhours, stdhours)` within
   the window, so drafts for legacy periods can differ by those nets while the rate law is exact.
-- **Night premium** (item 715, `unmsr='A'`; plus `NIA` allowance) — the old app paid night
-  hours × hourly × `otrates.nprate` **per the day-type the hours fell on** (10% regular
-  nights, higher on holidays); a flat 10% reproduces ~76% of 2024-25 lines. The rebuilt
-  attendance engine tracks `nphrs` per day (verified 99.9%) but the payroll draft does not
-  yet emit a 715 line — computing it exactly needs the per-day-type night split.
+- **Night premium** (item 715, `unmsr='A'`; plus `NIA` allowance) —
+  `Σ per-day night hours × hourly × otrates.nprate for that day's type`:
+  10% regular/rest-day nights, 13% special holiday (15% on a rest day), 20% legal holiday
+  (26% on a rest day); day type from the `holidays` table (`hflag` L/S, company days as S)
+  + the time card's day-off flag. **Implemented in the draft calculator** from per-day
+  `timecard.nphrs` over the pay-period window — verified **94.2%** against stored 2025
+  lines (100% in co 001/002/004; the co 003 misses are the same salary-drift cases as OT).
 
 ## Statutory & tax (employee share)
 - **SSS** — `ssstable` lookup by monthly gross → `sssee`.

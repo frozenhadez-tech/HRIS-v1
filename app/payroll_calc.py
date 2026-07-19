@@ -62,8 +62,37 @@ def _period_range(company, year, month, period):
     return datetime.date(year, month, 1), datetime.date(year, month, 15), None
 
 
+def _np_rates(company):
+    """Night-premium percent per OT family from otrates (regular .10, spl-holiday .13,
+    legal-holiday .20, on-restday variants higher). Uniform across paygroups, so otcode 1."""
+    return {r["pi"]: float(r["np"] or 0) for r in q(
+        "SELECT RTRIM(payitem) AS pi, nprate AS np FROM otrates "
+        "WHERE company=? AND RTRIM(otcode)='1'", company)}
+
+
+def _np_daytypes(d0, d1):
+    """Holiday map for a window: date -> 'L' (legal) / 'S' (special; company days count too)."""
+    return {r["hdate"].date(): ("S" if r["f"] == "C" else r["f"]) for r in q(
+        "SELECT hdate, RTRIM(hflag) AS f FROM holidays WHERE hdate>=? AND hdate<=?",
+        d0.isoformat(), d1.isoformat())}
+
+
+def _np_amount(nights, hol, rates, salary, paytype, company, eng):
+    """Σ night hours x hourly x the day-type's nprate. nights: [(date, nphrs, dayoff_bool)]."""
+    hourly = eng.hourly_rate(salary, paytype, company)
+    hours = amount = 0.0
+    for day, nphrs, off in nights:
+        f = hol.get(day)
+        item = (("710" if off else "708") if f == "L"
+                else ("706" if off else "704") if f == "S"
+                else ("702" if off else "701"))
+        hours += nphrs
+        amount += nphrs * hourly * rates.get(item, 0.10)
+    return round(hours, 2), r2(amount)
+
+
 def _core(company, emp_id, salary, paytype, period, fixallow, fixded, loans, ot_resolved, eng,
-          dhours=None):
+          dhours=None, night=None):
     """Core payslip math from already-loaded inputs. Shared by compute() and compute_batch().
     fixallow/fixded/loans: lists of dicts; ot_resolved: list of {payitem,descrip,hours,mult,multm,cat,ts}.
     dhours: the period's worked time-card hours (daily-paid employees only)."""
@@ -94,6 +123,8 @@ def _core(company, emp_id, salary, paytype, period, fixallow, fixded, loans, ot_
             continue
         amt = eng.line_amount(hrs, salary, paytype, float(ot.get("mult") or 0), float(ot.get("multm") or 0), company)
         add_e(ot["payitem"], ot["descrip"], amt, ot.get("cat", "7"), ot.get("ts", "3"), hours=hrs)
+    if night and night.get("amount"):
+        add_e("715", "Night Premium", night["amount"], "7", "3", hours=night.get("hours"))
     for a in fixallow:
         add_e(a["payitem"].strip(), a["descrip"], float(a["amount"] or 0), (a.get("cat") or "3"), (a.get("ts") or "0"))
     sss, ph, hd = eng.sss(salary), eng.philhealth(salary), eng.hdmf(salary)
@@ -160,16 +191,25 @@ def compute(company, emp_id, year, month, period, ot_lines=None):
                   "RTRIM(COALESCE(taxscheme,'3')) AS ts FROM payitem WHERE company=? AND payitem=?", company, ot["payitem"])
         if pit and ot.get("hours"):
             otr.append({"payitem": ot["payitem"], "hours": ot["hours"], **pit})
+    d0, d1, maxhr = _period_range(company, year, month, period)
     dhours = None
     if (pr["paytype"] or "M") == "D":
-        d0, d1, maxhr = _period_range(company, year, month, period)
         r = one("SELECT SUM(LEAST(COALESCE(tlhours,0), COALESCE(NULLIF(stdhours,0),8))) AS h "
                 "FROM timecard WHERE company=? AND emp_id=? AND trdate>=? AND trdate<=?",
                 company, emp_id, d0.isoformat(), d1.isoformat())
         if r and r["h"] is not None:
             dhours = min(float(r["h"]), maxhr) if maxhr else float(r["h"])
+    nights = [(r["trdate"].date(), float(r["nphrs"]), str(r["dayoff"] or "").strip() in ("1", "Y"))
+              for r in q("SELECT trdate, nphrs, COALESCE(dayoff,'') AS dayoff FROM timecard "
+                         "WHERE company=? AND emp_id=? AND trdate>=? AND trdate<=? "
+                         "AND COALESCE(nphrs,0)>0", company, emp_id, d0.isoformat(), d1.isoformat())]
+    night = None
+    if nights:
+        h, a = _np_amount(nights, _np_daytypes(d0, d1), _np_rates(company),
+                          float(pr["salary"] or 0), pr["paytype"] or "M", company, eng)
+        night = {"hours": h, "amount": a}
     return _core(company, emp_id, float(pr["salary"] or 0), pr["paytype"] or "M", period,
-                 fixallow, fixded, loans, otr, eng, dhours=dhours)
+                 fixallow, fixded, loans, otr, eng, dhours=dhours, night=night)
 
 
 def compute_batch(company, year, month, period):
@@ -202,13 +242,25 @@ def compute_batch(company, year, month, period):
         "SUM(LEAST(COALESCE(tlhours,0), COALESCE(NULLIF(stdhours,0),8))) AS h FROM timecard "
         "WHERE company=? AND trdate>=? AND trdate<=? GROUP BY emp_id",
         company, d0.isoformat(), d1.isoformat()) if r["h"] is not None}
+    np = defaultdict(list)
+    for r in q("SELECT RTRIM(emp_id) AS emp_id, trdate, nphrs, COALESCE(dayoff,'') AS dayoff "
+               "FROM timecard WHERE company=? AND trdate>=? AND trdate<=? AND COALESCE(nphrs,0)>0",
+               company, d0.isoformat(), d1.isoformat()):
+        np[r["emp_id"]].append((r["trdate"].date(), float(r["nphrs"]),
+                                str(r["dayoff"] or "").strip() in ("1", "Y")))
+    np_rates, np_hol = _np_rates(company), _np_daytypes(d0, d1)
     rows = []
     tot = {"gross": 0.0, "taxable": 0.0, "tax": 0.0, "total_ded": 0.0, "net": 0.0}
     for e in emps:
         emp = e["emp_id"]
+        night = None
+        if np.get(emp):
+            h, a = _np_amount(np[emp], np_hol, np_rates, float(e["salary"] or 0),
+                              e["paytype"] or "M", company, eng)
+            night = {"hours": h, "amount": a}
         r = _core(company, emp, float(e["salary"] or 0), e["paytype"] or "M", period,
                   fa.get(emp, []), fd.get(emp, []), ln.get(emp, []), ot.get(emp, []), eng,
-                  dhours=(dh.get(emp) if (e["paytype"] or "M") == "D" else None))
+                  dhours=(dh.get(emp) if (e["paytype"] or "M") == "D" else None), night=night)
         r["empname"] = e["empname"]
         rows.append(r)
         for k in tot:
