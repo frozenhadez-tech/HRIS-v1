@@ -117,6 +117,37 @@ table.att tr.off td { color: var(--ink-soft); opacity: .65; }
 .dedlist .ded .hint { display: block; margin-top: 1px; }
 .dedlist .ded > b.mono { white-space: nowrap; }
 
+/* attendance quick-actions dialog */
+.attbtn { background: var(--go); margin-top: 8px; }
+dialog.qa { width: min(430px, 92vw); border: 1px solid var(--line); border-radius: 14px;
+  padding: 16px 16px 18px; background: var(--paper); color: var(--ink); max-height: 88vh; overflow: auto; }
+dialog.qa::backdrop { background: rgba(24, 22, 16, .5); }
+.qa-head { display: flex; align-items: center; justify-content: center; position: relative; }
+.qa-head h3 { font-family: var(--serif); font-weight: 900; font-size: 20px; margin: 2px 0 6px; }
+.qa-x { position: absolute; right: 0; top: 0; border: 0; background: none; font-size: 16px;
+  color: var(--ink-soft); cursor: pointer; padding: 4px; }
+.qa-note { background: #fdf6e3; border: 1px solid #e5d9a8; border-radius: 8px; padding: 9px 12px;
+  font-size: 12px; color: #6b5d1f; margin-bottom: 12px; }
+.qa-stat { background: var(--paper-deep); border: 1px solid var(--line); border-radius: 10px;
+  padding: 4px 12px; margin-bottom: 12px; }
+.qa-row { display: flex; justify-content: space-between; align-items: baseline; padding: 7px 0;
+  font-size: 14px; }
+.qa-stat .qa-row + .qa-row { border-top: 1px dashed var(--line); }
+.qa-row b.ok { color: var(--go); }
+.qa-sub { font-family: var(--serif); font-size: 14.5px; margin: 4px 0 6px; }
+.loc { border: 1px solid; border-radius: 10px; padding: 8px 12px; margin-bottom: 8px; font-size: 13px; }
+.loc b { margin-right: 6px; }
+.loc .coords { display: block; font-size: 13.5px; }
+.loc .dim { font-size: 11.5px; }
+.loc.in { background: #ecf3ec; border-color: #b9d4bb; }
+.loc.out { background: #f7ebe8; border-color: #dcb8ae; }
+.qa-btns { display: flex; gap: 10px; margin-top: 14px; }
+.qa-btns button { flex: 1; border: 0; border-radius: 10px; padding: 15px 0; font-family: var(--serif);
+  font-weight: 700; font-size: 16px; color: var(--paper); cursor: pointer; }
+.qa-in { background: var(--go); }
+.qa-out { background: var(--stamp); }
+.qa-btns button:disabled { opacity: .38; cursor: default; }
+
 /* bottom tab bar */
 body { padding-bottom: 66px; }
 .tabbar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; z-index: 10;

@@ -63,7 +63,7 @@ def login():
                 and check_password_hash(a["pin_hash"], pin)):
             session["me"] = {"co": company, "emp": emp_id, "name": p["empname"],
                              "must_change": bool(a["must_change"])}
-            return redirect(url_for("me.pin" if a["must_change"] else "me.index"))
+            return redirect(url_for("me.pin" if a["must_change"] else "me.profile"))
         time.sleep(0.5)                       # slow the guessing down a little
         error = "Wrong badge number or PIN — or the mobile clock isn't enabled for you yet (ask HR)."
     return render_template("me_login.html", companies=companies, error=error)
@@ -93,7 +93,7 @@ def pin():
             m["must_change"] = False
             session["me"] = m
             flash("PIN changed. Keep it to yourself.", "ok")
-            return redirect(url_for("me.index"))
+            return redirect(url_for("me.profile"))
     return render_template("me_pin.html", me=m, error=error, forced=m.get("must_change"))
 
 
@@ -148,6 +148,8 @@ def punch():
             ip, (request.user_agent.string or "")[:200])
     ae.rebuild_punch_day(m["co"], m["emp"], day, user=m["emp"])
     flash(f"Timed {kind} at {now:%H:%M}.", "ok")
+    if (request.form.get("back") or "").strip() == "profile":
+        return redirect(url_for("me.profile", att=1))
     return redirect(url_for("me.index"))
 
 
@@ -222,6 +224,54 @@ def _profile_row(company, emp_id):
         "WHERE p.company=? AND RTRIM(p.emp_id)=?", company, emp_id)
 
 
+def _haversine_m(lat1, lng1, lat2, lng2):
+    import math
+    r = 6371000.0
+    p1, p2 = math.radians(float(lat1)), math.radians(float(lat2))
+    dp = p2 - p1
+    dl = math.radians(float(lng2) - float(lng1))
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return r * 2 * math.asin(math.sqrt(a))
+
+
+def _hhmm_str(v):
+    v = int(v)
+    return f"{v // 100:02d}:{v % 100:02d}"
+
+
+def _att_state(m):
+    """Today's punch picture for the Quick Actions dialog (status, times, locations)."""
+    now = now_ph()
+    day, next_kind = _assign_day(m["co"], m["emp"], now)
+    punches = q("SELECT local_hhmm, kind, lat, lng, accuracy FROM punchlog "
+                "WHERE company=? AND emp_id=? AND local_date=? ORDER BY punch_at, id",
+                m["co"], m["emp"], day.isoformat())
+    first_in = next((p for p in punches if p["kind"] == "IN"), None)
+    last_out = next((p for p in reversed(punches) if p["kind"] == "OUT"), None)
+
+    def mins(h):
+        h = int(h)
+        return (h // 100) * 60 + h % 100
+
+    dur = ""
+    if first_in:
+        start = mins(first_in["local_hhmm"])
+        end = (mins(last_out["local_hhmm"]) if last_out and next_kind == "IN"
+               else now.hour * 60 + now.minute)
+        if end < start:
+            end += 1440
+        dur = f"{(end - start) // 60}h {(end - start) % 60:02d}m"
+    dist = None
+    if (first_in and last_out and first_in["lat"] is not None and last_out["lat"] is not None):
+        dist = round(_haversine_m(first_in["lat"], first_in["lng"],
+                                  last_out["lat"], last_out["lng"]))
+    return {"day": day, "carry": day != now.date(), "next_kind": next_kind,
+            "active": next_kind == "OUT", "punches": punches,
+            "time_in": _hhmm_str(first_in["local_hhmm"]) if first_in else "",
+            "time_out": _hhmm_str(last_out["local_hhmm"]) if last_out and next_kind == "IN" else "",
+            "dur": dur, "dist": dist}
+
+
 def _code_desc(tbl, code):
     if not code:
         return ""
@@ -278,6 +328,7 @@ def profile():
                            rel=_code_desc("REL", p["contactrel"]),
                            compname=(comp["n"] if comp else m["co"]),
                            pay=pay, allow=float(allow["a"] or 0), gov=gov, personal=personal,
+                           att=_att_state(m), open_att=bool(request.args.get("att")),
                            active="profile")
 
 

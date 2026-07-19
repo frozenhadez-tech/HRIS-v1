@@ -16,7 +16,55 @@
   {% if p.job %}<p class="job">{{ p.job }}</p>{% endif %}
   <span class="stschip {{ 'off' if p.sts == 'X' }}">{{ status or '—' }}</span>
   <a class="editbtn" href="{{ url_for('me.profile_edit') }}">✎ Edit contact details</a>
+  <a class="editbtn attbtn" href="{{ url_for('me.index') }}" id="attbtn">
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" style="vertical-align:-3px"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    Attendance
+  </a>
 </section>
+
+<dialog id="attdlg" class="qa">
+  <div class="qa-head">
+    <h3>Quick Actions</h3>
+    <button type="button" class="qa-x" data-qa-close aria-label="Close">✕</button>
+  </div>
+  <p class="hint" style="text-align:center;margin-top:0">Clock in or clock out.
+    {% if att.carry %}This punch counts for {{ att.day.strftime('%b %d') }} (night shift).{% endif %}</p>
+  <div class="qa-note">Your location is recorded with each punch when your phone allows it —
+    it appears below and on your time card record.</div>
+
+  <div class="qa-stat">
+    <div class="qa-row"><span>Status</span><b class="{{ 'ok' if att.active }}">{{ 'Clocked In' if att.active else 'Not Active' }}</b></div>
+    <div class="qa-row"><span>Time In</span><b class="mono">{{ att.time_in or '—' }}</b></div>
+    <div class="qa-row"><span>Time Out</span><b class="mono">{{ att.time_out or '—' }}</b></div>
+    <div class="qa-row"><span>Session Duration</span><b class="mono">{{ att.dur or '—' }}</b></div>
+  </div>
+
+  {% if att.punches %}
+  <h4 class="qa-sub">Location History</h4>
+  {% for pch in att.punches %}
+  <div class="loc {{ 'in' if pch.kind == 'IN' else 'out' }}">
+    <b>Time {{ pch.kind.title() }}</b> <span class="mono">{{ '%02d:%02d' % (pch.local_hhmm|int // 100, pch.local_hhmm|int % 100) }}</span>
+    {% if pch.lat is not none %}
+    <span class="mono coords">{{ pch.lat }}, {{ pch.lng }}</span>
+    {% if pch.accuracy is not none %}<span class="dim">±{{ pch.accuracy }}m accuracy</span>{% endif %}
+    {% else %}<span class="dim">no location captured</span>{% endif %}
+  </div>
+  {% endfor %}
+  {% if att.dist is not none %}
+  <div class="qa-row" style="margin-top:8px"><span>Distance between locations</span><b class="mono">{{ att.dist }}m</b></div>
+  {% endif %}
+  {% endif %}
+
+  <form method="post" action="{{ url_for('me.punch') }}" id="qaform">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="back" value="profile">
+    <input type="hidden" name="lat"><input type="hidden" name="lng"><input type="hidden" name="acc">
+    <div class="qa-btns">
+      <button type="submit" class="qa-in" {{ 'disabled' if att.next_kind != 'IN' }}>→] Time In</button>
+      <button type="submit" class="qa-out" {{ 'disabled' if att.next_kind != 'OUT' }}>[→ Time Out</button>
+    </div>
+  </form>
+</dialog>
 
 <section class="card">
   <h2>Employee Overview</h2>
@@ -92,4 +140,35 @@
 <p class="hint" style="text-align:center"><a class="lnk" href="{{ url_for('me.pin') }}">Change PIN</a></p>
 
 {% include "_me_nav.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var dlg = document.getElementById('attdlg'), btn = document.getElementById('attbtn');
+  if (!dlg || !dlg.showModal) return;              // no <dialog> support: button falls back to the Clock page
+  btn.addEventListener('click', function (e) { e.preventDefault(); dlg.showModal(); });
+  dlg.addEventListener('click', function (e) {
+    if (e.target === dlg || (e.target.closest && e.target.closest('[data-qa-close]'))) dlg.close();
+  });
+  {% if open_att %}dlg.showModal();{% endif %}
+
+  // attach a GPS fix if the phone allows it, then submit; never block the punch on it
+  var form = document.getElementById('qaform'), sent = false;
+  form.addEventListener('submit', function (e) {
+    if (sent) { e.preventDefault(); return; }
+    if (!navigator.geolocation) { sent = true; return; }
+    e.preventDefault();
+    var done = false;
+    function go() { if (done) return; done = true; sent = true; form.submit(); }
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      form.lat.value = pos.coords.latitude.toFixed(6);
+      form.lng.value = pos.coords.longitude.toFixed(6);
+      form.acc.value = Math.round(pos.coords.accuracy);
+      go();
+    }, go, { timeout: 2500, maximumAge: 60000 });
+    setTimeout(go, 3000);
+  });
+})();
+</script>
 {% endblock %}
