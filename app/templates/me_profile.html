@@ -35,27 +35,57 @@
   <div class="kv1">
     <div><span class="k">Cellphone</span><span class="v mono">{{ p.cellphone or '—' }}</span></div>
     <div><span class="k">Telephone</span><span class="v mono">{{ p.telno or '—' }}</span></div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Address Information</h2>
+  <div class="kv1">
     <div><span class="k">Address</span><span class="v">{{ addr or '—' }}</span></div>
   </div>
 </section>
 
 <section class="card">
+  <h2>Compensation</h2>
+  <div class="kv1">
+    <div><span class="k">{{ 'Daily rate' if pay and pay.pt == 'D' else 'Monthly salary' }}</span>
+      <span class="v mono">₱ {{ pay.salary | peso if pay else '—' }}</span></div>
+    <div><span class="k">Allowances / month</span><span class="v mono">₱ {{ allow | peso }}</span></div>
+    <div><span class="k">Pay type</span>
+      <span class="v"><span class="paychip">{{ {'D':'DAILY','M':'MONTHLY'}.get(pay.pt, pay.pt or '—') if pay else '—' }}</span></span></div>
+  </div>
+</section>
+
+<section class="card">
   <h2>Government IDs</h2>
-  <div class="kv2">
-    <div><span class="k">SSS No.</span><span class="v mono">{{ p.sssno or '—' }}</span></div>
-    <div><span class="k">TIN</span><span class="v mono">{{ p.tin or '—' }}</span></div>
-    <div><span class="k">PhilHealth</span><span class="v mono">{{ p.phealthno or '—' }}</span></div>
-    <div><span class="k">Pag-IBIG</span><span class="v mono">{{ p.hdmfno or '—' }}</span></div>
+  <div class="kv1">
+    <div><span class="k">TIN</span><span class="v mono">{{ gov.tin or '—' }}</span></div>
+    <div><span class="k">SSS</span><span class="v mono">{{ gov.sss or '—' }}</span></div>
+    <div><span class="k">Pag-IBIG</span><span class="v mono">{{ gov.hdmf or '—' }}</span></div>
+    <div><span class="k">PhilHealth</span><span class="v mono">{{ gov.phic or '—' }}</span></div>
   </div>
   <p class="hint">Something wrong here? Only HR can correct these — visit them with your ID card.</p>
 </section>
 
 <section class="card">
+  <h2>Personal Information</h2>
+  <div class="kv1">
+    <div><span class="k">Birth date</span><span class="v">{{ personal.birthdate.strftime('%b %d, %Y') if personal.birthdate else '—' }}</span></div>
+    <div><span class="k">Gender</span><span class="v">{{ personal.gender or '—' }}</span></div>
+    <div><span class="k">Civil status</span><span class="v">{{ personal.civil or '—' }}</span></div>
+    <div><span class="k">Nationality</span><span class="v">{{ personal.nat or '—' }}</span></div>
+    <div><span class="k">Blood type</span><span class="v">{{ personal.blood or '—' }}</span></div>
+    <div><span class="k">Religion</span><span class="v">{{ personal.religion or '—' }}</span></div>
+  </div>
+</section>
+
+<section class="card">
   <h2>Emergency Contact</h2>
   <div class="kv1">
-    <div><span class="k">Person</span><span class="v">{{ p.contactper or '—' }}</span></div>
+    <div><span class="k">Name</span><span class="v">{{ p.contactper or '—' }}</span></div>
     <div><span class="k">Relationship</span><span class="v">{{ rel or '—' }}</span></div>
-    <div><span class="k">Contact No.</span><span class="v mono">{{ p.contacttel or '—' }}</span></div>
+    <div><span class="k">Phone</span><span class="v mono">{{ p.contacttel or '—' }}</span></div>
+    <div><span class="k">Address</span><span class="v">{{ p.contactadd or '—' }}</span></div>
   </div>
 </section>
 

@@ -180,10 +180,12 @@ def attendance():
                            prev=prev, nxt=nxtm, active="att")
 
 
-CONTACT_FIELDS = [("cellphone", "Cellphone"), ("telno", "Telephone"), ("address", "Address"),
+CONTACT_FIELDS = [("cellphone", "Cellphone"), ("telno", "Telephone"),
+                  ("address1", "Address line 1"), ("address2", "Address line 2"),
                   ("barangay", "Barangay"), ("addrcity", "City / Town"), ("addrprov", "Province"),
                   ("zipcode", "Zip"), ("contactper", "Emergency contact"),
-                  ("contactrel", "Relationship"), ("contacttel", "Contact tel.")]
+                  ("contactrel", "Relationship"), ("contacttel", "Contact tel."),
+                  ("contactadd", "Emergency contact address")]
 _WIDTHS: dict = {}
 
 
@@ -200,19 +202,47 @@ def _profile_row(company, emp_id):
         "SELECT RTRIM(p.emp_id) AS emp_id, RTRIM(COALESCE(p.firstname,'')) AS fn, "
         "RTRIM(COALESCE(p.middlename,'')) AS mn, RTRIM(p.lastname) AS ln, "
         "RTRIM(COALESCE(j.descrip,'')) AS job, RTRIM(COALESCE(d.descrip,'')) AS dept, "
-        "RTRIM(COALESCE(p.empsts,'')) AS sts, p.datehired, p.datereg, "
+        "RTRIM(COALESCE(p.empsts,'')) AS sts, p.datehired, p.datereg, p.birthdate, "
+        "RTRIM(COALESCE(p.sex,'')) AS sex, RTRIM(COALESCE(p.civilsts,'')) AS civilsts, "
+        "RTRIM(COALESCE(p.nationality,'')) AS nationality, RTRIM(COALESCE(p.bloodtype,'')) AS bloodtype, "
+        "RTRIM(COALESCE(p.religion,'')) AS religion, "
         "RTRIM(COALESCE(p.cellphone,'')) AS cellphone, RTRIM(COALESCE(p.telno,'')) AS telno, "
-        "RTRIM(COALESCE(p.address,'')) AS address, RTRIM(COALESCE(p.barangay,'')) AS barangay, "
+        "RTRIM(COALESCE(p.address1,'')) AS address1, RTRIM(COALESCE(p.address2,'')) AS address2, "
+        "RTRIM(COALESCE(p.barangay,'')) AS barangay, "
         "RTRIM(COALESCE(p.addrcity,'')) AS addrcity, RTRIM(COALESCE(p.addrprov,'')) AS addrprov, "
         "RTRIM(COALESCE(p.zipcode,'')) AS zipcode, RTRIM(COALESCE(p.sssno,'')) AS sssno, "
         "RTRIM(COALESCE(p.tin,'')) AS tin, RTRIM(COALESCE(p.phealthno,'')) AS phealthno, "
         "RTRIM(COALESCE(p.hdmfno,'')) AS hdmfno, RTRIM(COALESCE(p.contactper,'')) AS contactper, "
         "RTRIM(COALESCE(p.contactrel,'')) AS contactrel, RTRIM(COALESCE(p.contacttel,'')) AS contacttel, "
+        "RTRIM(COALESCE(p.contactadd,'')) AS contactadd, "
         "(p.emppic IS NOT NULL) AS has_pic "
         "FROM personnel p "
         "LEFT JOIN jobcode j ON j.company=p.company AND j.code=p.jobcode "
         "LEFT JOIN department d ON d.company=p.company AND d.code=p.dept "
         "WHERE p.company=? AND RTRIM(p.emp_id)=?", company, emp_id)
+
+
+def _code_desc(tbl, code):
+    if not code:
+        return ""
+    r = one("SELECT RTRIM(descrip) AS d FROM tablecode1 WHERE tblcode=? AND RTRIM(fldcode)=?", tbl, code)
+    return r["d"] if r else code
+
+
+def _digits(v):
+    return "".join(ch for ch in (v or "") if ch.isdigit())
+
+
+def _fmt_id(v, groups):
+    """Dash-format a government ID when the digit count matches (e.g. TIN 3-3-3-3)."""
+    d = _digits(v)
+    if len(d) != sum(groups):
+        return (v or "").strip()
+    out, i = [], 0
+    for g in groups:
+        out.append(d[i:i + g])
+        i += g
+    return "-".join(out)
 
 
 @bp.route("/profile")
@@ -221,19 +251,34 @@ def profile():
     p = _profile_row(m["co"], m["emp"])
     if not p:
         abort(404)
-    sts = one("SELECT RTRIM(descrip) AS d FROM tablecode1 WHERE tblcode='EST' AND RTRIM(fldcode)=?", p["sts"])
-    rel = one("SELECT RTRIM(descrip) AS d FROM tablecode1 WHERE tblcode='REL' AND RTRIM(fldcode)=?",
-              p["contactrel"]) if p["contactrel"] else None
     fullname = " ".join(x for x in (p["fn"], p["mn"], p["ln"]) if x)
     initials = ((p["fn"][:1] or "") + (p["ln"][:1] or "")).upper() or p["emp_id"][:2]
-    addr = ", ".join(x for x in (p["address"], p["barangay"], p["addrcity"], p["addrprov"]) if x)
+    addr = ", ".join(x for x in (p["address1"], p["address2"], p["barangay"],
+                                 p["addrcity"], p["addrprov"]) if x)
     if p["zipcode"]:
         addr = (addr + " " + p["zipcode"]).strip()
     comp = one("SELECT RTRIM(companynam) AS n FROM company WHERE RTRIM(company)=?", m["co"])
+
+    pay = one("SELECT COALESCE(salary,0) AS salary, RTRIM(COALESCE(paytype,'')) AS pt "
+              "FROM payroll WHERE company=? AND RTRIM(emp_id)=?", m["co"], m["emp"])
+    allow = one("SELECT COALESCE(SUM(amount * CASE WHEN RTRIM(COALESCE(freq,''))='9' THEN 2 ELSE 1 END),0) AS a "
+                "FROM fixallow WHERE company=? AND RTRIM(emp_id)=?", m["co"], m["emp"])
+    gov = {"tin": _fmt_id(p["tin"], (3, 3, 3, 3)) or _fmt_id(p["tin"], (3, 3, 3)),
+           "sss": _fmt_id(p["sssno"], (2, 7, 1)),
+           "phic": _fmt_id(p["phealthno"], (2, 9, 1)),
+           "hdmf": _fmt_id(p["hdmfno"], (4, 4, 4))}
+    personal = {"birthdate": p["birthdate"],
+                "gender": {"M": "Male", "F": "Female"}.get(p["sex"], p["sex"]),
+                "civil": _code_desc("CST", p["civilsts"]),
+                "nat": _code_desc("NAT", p["nationality"]),
+                "blood": p["bloodtype"],
+                "religion": _code_desc("RLG", p["religion"])}
     return render_template("me_profile.html", me=m, p=p, fullname=fullname, initials=initials,
-                           status=(sts["d"] if sts else p["sts"]), addr=addr,
-                           rel=(rel["d"] if rel else p["contactrel"]),
-                           compname=(comp["n"] if comp else m["co"]), active="profile")
+                           status=_code_desc("EST", p["sts"]), addr=addr,
+                           rel=_code_desc("REL", p["contactrel"]),
+                           compname=(comp["n"] if comp else m["co"]),
+                           pay=pay, allow=float(allow["a"] or 0), gov=gov, personal=personal,
+                           active="profile")
 
 
 @bp.route("/photo")

@@ -10,7 +10,8 @@
   <input type="hidden" name="csrf" value="{{ csrf_token() }}">
   <label>Cellphone<input type="tel" name="cellphone" value="{{ f.get('cellphone','') }}" maxlength="{{ widths.get('cellphone', 20) }}"></label>
   <label>Telephone<input type="tel" name="telno" value="{{ f.get('telno','') }}" maxlength="{{ widths.get('telno', 20) }}"></label>
-  <label>Address<input type="text" name="address" value="{{ f.get('address','') }}" maxlength="{{ widths.get('address', 60) }}"></label>
+  <label>Address line 1<input type="text" name="address1" value="{{ f.get('address1','') }}" maxlength="{{ widths.get('address1', 60) }}"></label>
+  <label>Address line 2<input type="text" name="address2" value="{{ f.get('address2','') }}" maxlength="{{ widths.get('address2', 60) }}"></label>
   <label>Barangay<input type="text" name="barangay" value="{{ f.get('barangay','') }}" maxlength="{{ widths.get('barangay', 30) }}"></label>
   <label>City / Town<input type="text" name="addrcity" value="{{ f.get('addrcity','') }}" maxlength="{{ widths.get('addrcity', 30) }}"></label>
   <label>Province<input type="text" name="addrprov" value="{{ f.get('addrprov','') }}" maxlength="{{ widths.get('addrprov', 30) }}"></label>
@@ -26,6 +27,7 @@
     </select>
   </label>
   <label>Emergency contact no.<input type="tel" name="contacttel" value="{{ f.get('contacttel','') }}" maxlength="{{ widths.get('contacttel', 20) }}"></label>
+  <label>Emergency contact address<input type="text" name="contactadd" value="{{ f.get('contactadd','') }}" maxlength="{{ widths.get('contactadd', 60) }}"></label>
   {% if error %}<p class="err">{{ error }}</p>{% endif %}
   <button type="submit" class="big">Save</button>
   <p class="hint">Name, position and government IDs can only be changed by HR.</p>

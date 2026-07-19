@@ -94,6 +94,10 @@ table.att tr.off td { color: var(--ink-soft); opacity: .65; }
   color: var(--ink-soft); }
 .v { display: block; font-size: 14.5px; font-weight: 600; overflow-wrap: anywhere; }
 
+.paychip { display: inline-block; background: var(--paper-deep); border: 1px solid var(--line);
+  border-radius: 6px; padding: 2px 12px; font-family: var(--mono); font-size: 12px; font-weight: 700;
+  letter-spacing: 1px; }
+
 /* bottom tab bar */
 body { padding-bottom: 66px; }
 .tabbar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; z-index: 10;
