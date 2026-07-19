@@ -50,7 +50,13 @@
     {% endfor %}
     </tbody>
   </table>
+  {% if pager %}
+    {% import "_pager.html" as pg %}
+    {{ pg.bar('screen', {'key': key, 'mode': mode, 'company': company}, pager.page, pager.pages, pager.count, pager.per) }}
+    <p class="note">{{ pager.count }} row{{ 's' if pager.count != 1 }} · {{ pager.per }} per page{% if g.edit %} · editable{% endif %}.</p>
+  {% else %}
   <p class="note">{{ rows | length }} row{{ 's' if rows | length != 1 }}{{ ' (capped)' if rows | length >= 300 }}{% if g.edit %} · editable{% endif %}.</p>
+  {% endif %}
 </section>
 
 {% endblock %}

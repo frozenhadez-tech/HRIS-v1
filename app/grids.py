@@ -192,8 +192,8 @@ GRIDS = {
                  ("frdate", "From", "d"), ("todate", "To", "d"), ("reason", "Reason", "")],
     },
     "empshift": {
-        "title": "Employee Shifts", "subtitle": "empshift",
-        "sql": f"SELECT TOP 400 RTRIM(t.emp_id) AS emp_id, {EMPNAME}, t.frdate, RTRIM(COALESCE(t.shift,'')) AS shift "
+        "title": "Employee Shifts", "subtitle": "empshift", "page_size": 25,
+        "sql": f"SELECT RTRIM(t.emp_id) AS emp_id, {EMPNAME}, t.frdate, RTRIM(COALESCE(t.shift,'')) AS shift "
                "FROM empshift t " + NAME + " ORDER BY t.frdate DESC",
         "cols": [("emp_id", "Emp No", "m"), ("empname", "Name", ""), ("frdate", "From Date", "d"), ("shift", "Shift", "m")],
     },

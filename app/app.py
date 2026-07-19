@@ -168,9 +168,18 @@ def screen(key):
         abort(404)
     company = sel_company()
     params = [company] if g.get("company") else []
-    rows = q(g["sql"], *params)
+    per = g.get("page_size")
+    pager = None
+    if per:  # grids opt in via page_size (the sql must be uncapped — no TOP)
+        total = one(f"SELECT COUNT(*) AS n FROM ({g['sql']}) sub", *params)["n"]
+        pages = max(1, -(-total // per))
+        page = min(max(request.args.get("page", 1, type=int), 1), pages)
+        rows = q(g["sql"] + " LIMIT ? OFFSET ?", *params, per, (page - 1) * per)
+        pager = {"page": page, "pages": pages, "count": total, "per": per}
+    else:
+        rows = q(g["sql"], *params)
     return render_template(
-        "grid.html", g=g, rows=rows, key=key,
+        "grid.html", g=g, rows=rows, key=key, pager=pager,
         title=g["title"], subtitle=g.get("subtitle", ""),
     )
 
