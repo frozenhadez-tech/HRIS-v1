@@ -1,0 +1,45 @@
+{% extends "me_base.html" %}
+{% block title %}My Attendance{% endblock %}
+{% macro hhmm(v) %}{% if v %}{{ '%02d:%02d' % (v|int // 100, v|int % 100) }}{% endif %}{% endmacro %}
+{% block content %}
+<header class="topbar">
+  <div><strong>{{ me.name }}</strong><span class="mono dim">{{ me.emp }} · Co {{ me.co }}</span></div>
+  <a class="lnk" href="{{ url_for('me.index') }}">‹ Clock</a>
+</header>
+
+<section class="card">
+  <div class="monthnav">
+    <a class="lnk" href="{{ url_for('me.attendance', month=prev) }}">‹ {{ prev }}</a>
+    <h2>{{ first.strftime('%B %Y') }}</h2>
+    {% if nxt %}<a class="lnk" href="{{ url_for('me.attendance', month=nxt) }}">{{ nxt }} ›</a>{% else %}<span></span>{% endif %}
+  </div>
+
+  <div class="tots mono">
+    <span><b>{{ tot.days }}</b> days</span>
+    <span><b>{{ '%.1f' % tot.hours }}</b> hrs</span>
+    <span><b>{{ tot.tardy }}</b> min tardy</span>
+    <span><b>{{ '%.1f' % tot.ot }}</b> OT</span>
+  </div>
+
+  {% if rows %}
+  <table class="att mono">
+    <thead><tr><th>Date</th><th>In</th><th>Out</th><th>In</th><th>Out</th><th class="n">Hrs</th><th class="n">Tdy</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      {% set off = r.dayoff|string|trim in ('1','Y') %}
+      <tr class="{{ 'off' if off }}">
+        <td>{{ r.trdate.strftime('%d %a') }}</td>
+        <td>{{ hhmm(r.timein1) }}</td><td>{{ hhmm(r.timeout1) }}</td>
+        <td>{{ hhmm(r.timein2) }}</td><td>{{ hhmm(r.timeout2) }}</td>
+        <td class="n">{{ '%.2f' % r.tlhours if r.tlhours else '' }}</td>
+        <td class="n {{ 'bad' if r.tardy and r.tardy > 0 }}">{{ r.tardy|int if r.tardy and r.tardy > 0 else '' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="hint">Hrs = total worked · Tdy = tardy minutes. Questions about a day? Ask HR — they see the same record.</p>
+  {% else %}
+  <p class="dim">No attendance recorded this month.</p>
+  {% endif %}
+</section>
+{% endblock %}

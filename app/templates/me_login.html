@@ -1,0 +1,29 @@
+{% extends "me_base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block content %}
+<header class="brand">
+  <img src="{{ url_for('static', filename='clock-icon.svg') }}" alt="" width="56" height="56">
+  <h1>Time Clock</h1>
+  <p class="sub">L98 Brokerage &amp; Logistics</p>
+</header>
+
+<form method="post" class="card form">
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+  <label>Company
+    <select name="company" required>
+      {% for c in companies %}<option value="{{ c.co }}" {{ 'selected' if request.form.get('company')==c.co }}>{{ c.co }} — {{ c.nam }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Badge No.
+    <input type="text" name="emp_id" value="{{ request.form.get('emp_id','') }}" inputmode="numeric"
+           autocomplete="username" placeholder="e.g. 000212" required autofocus>
+  </label>
+  <label>PIN
+    <input type="password" name="pin" inputmode="numeric" autocomplete="current-password"
+           maxlength="8" required>
+  </label>
+  {% if error %}<p class="err">{{ error }}</p>{% endif %}
+  <button type="submit" class="big">Sign in</button>
+  <p class="hint">No PIN yet? Ask HR to enable the mobile clock for you.</p>
+</form>
+{% endblock %}

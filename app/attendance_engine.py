@@ -14,7 +14,7 @@ entry (see the Overtime Entry screen), not a function of the punches.
 from __future__ import annotations
 
 import datetime
-from db import q, one
+from db import q, one, execute
 
 NIGHT_START = 22 * 60          # 22:00 — night differential window start
 DEFAULT_GRACE = 0
@@ -210,6 +210,88 @@ def compute_day(sched: dict, punches: list[tuple], dayoff: bool | None = None,
 
     return {"tlhours": round(tl, 2), "reghrs": round(reg, 2), "tardy": int(tardy),
             "undertime": round(undertime, 2), "nphrs": round(max(0.0, npm), 2)}
+
+
+def min_to_hhmm(mins) -> str | None:
+    if mins is None:
+        return None
+    mins = int(mins) % 1440
+    return f"{mins // 60:02d}:{mins % 60:02d}"
+
+
+def rebuild_punch_day(company: str, emp_id: str, d: datetime.date, user: str = "PHONE") -> dict:
+    """Fold the day's phone punches (punchlog) into the legacy pipeline: rebuild the
+    timecardtr row (source='P' — the slot layout the biometric feed used) and recompute
+    the timecard row with the same rules as Time Card Update. Approved OT is preserved.
+    Idempotent: always rebuilt from punchlog, so a duplicate or corrected punch heals."""
+    punches = q("SELECT local_hhmm FROM punchlog WHERE company=? AND emp_id=? AND local_date=? "
+                "ORDER BY punch_at, id", company, emp_id, d.isoformat())
+    seq = [int(p["local_hhmm"]) for p in punches]
+    pairs = [(seq[i], seq[i + 1] if i + 1 < len(seq) else None)
+             for i in range(0, len(seq), 2)][:4]
+    now = datetime.datetime.now()
+
+    sch = schedule(company, emp_id, d)
+    if sch:
+        std = {"in": min_to_hhmm(sch["stdin"]), "bo": min_to_hhmm(sch["brkout"]),
+               "bi": min_to_hhmm(sch["brkin"]), "out": min_to_hhmm(sch["stdout"])}
+        shift, stdhours, daycd = sch["shift"], sch["stdhours"], str(sch["daycode"])
+        dayoff = "1" if sch["dayoff"] else "0"
+    else:
+        # no shift assigned yet: keep the punches flowing; hours fall back to the raw span
+        std = {"in": None, "bo": None, "bi": None, "out": None}
+        shift, stdhours, daycd = None, 0.0, str(daycode(d))
+        dayoff = "0"
+
+    slots = [None] * 8
+    for i, (pin, pout) in enumerate(pairs):
+        slots[i * 2], slots[i * 2 + 1] = pin, pout
+    execute(
+        "INSERT INTO timecardtr (company,emp_id,trdate,seqno,daycd,stdhours,shift,dayoff,"
+        "stdtimein,stdbrkout,stdbrkin,stdtimeout,timein1,timeout1,timein2,timeout2,"
+        "timein3,timeout3,timein4,timeout4,source,createby,createdate) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT (company,emp_id,trdate,seqno) DO UPDATE SET daycd=EXCLUDED.daycd, "
+        "stdhours=EXCLUDED.stdhours, shift=EXCLUDED.shift, dayoff=EXCLUDED.dayoff, "
+        "stdtimein=EXCLUDED.stdtimein, stdbrkout=EXCLUDED.stdbrkout, stdbrkin=EXCLUDED.stdbrkin, "
+        "stdtimeout=EXCLUDED.stdtimeout, timein1=EXCLUDED.timein1, timeout1=EXCLUDED.timeout1, "
+        "timein2=EXCLUDED.timein2, timeout2=EXCLUDED.timeout2, timein3=EXCLUDED.timein3, "
+        "timeout3=EXCLUDED.timeout3, timein4=EXCLUDED.timein4, timeout4=EXCLUDED.timeout4, "
+        "source=EXCLUDED.source, createby=EXCLUDED.createby, createdate=EXCLUDED.createdate",
+        company, emp_id, d.isoformat(), 1, daycd, stdhours, shift, dayoff,
+        std["in"], std["bo"], std["bi"], std["out"], *slots, "P", user, now)
+
+    prev = one("SELECT othrs FROM timecard WHERE company=? AND emp_id=? AND trdate=?",
+               company, emp_id, d.isoformat())
+    ot = float(prev["othrs"] or 0) if prev else 0.0
+    if sch:
+        res = compute_day(sch, pairs, approved_ot=ot)
+    else:
+        tl = 0.0
+        for pin, pout in pairs:
+            mi, mo = _num_min(pin), _num_min(pout)
+            if mi is not None and mo is not None:
+                tl += ((mo + 1440 if mo < mi else mo) - mi) / 60.0
+        res = {"tlhours": round(tl, 2), "reghrs": 0.0, "tardy": 0, "undertime": 0.0, "nphrs": 0.0}
+
+    execute(
+        "INSERT INTO timecard (company,emp_id,trdate,daycd,shift,dayoff,timein1,timeout1,timein2,timeout2,"
+        "timein3,timeout3,timein4,timeout4,stdhours,stdtimein,stdbrkout,stdbrkin,stdtimeout,"
+        "tlhours,reghrs,tardy,undertime,nphrs,recalcflg,changeby,changedate) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT (company,emp_id,trdate) DO UPDATE SET daycd=EXCLUDED.daycd, shift=EXCLUDED.shift, "
+        "dayoff=EXCLUDED.dayoff, timein1=EXCLUDED.timein1, timeout1=EXCLUDED.timeout1, "
+        "timein2=EXCLUDED.timein2, timeout2=EXCLUDED.timeout2, timein3=EXCLUDED.timein3, "
+        "timeout3=EXCLUDED.timeout3, timein4=EXCLUDED.timein4, timeout4=EXCLUDED.timeout4, "
+        "stdhours=EXCLUDED.stdhours, stdtimein=EXCLUDED.stdtimein, stdbrkout=EXCLUDED.stdbrkout, "
+        "stdbrkin=EXCLUDED.stdbrkin, stdtimeout=EXCLUDED.stdtimeout, tlhours=EXCLUDED.tlhours, "
+        "reghrs=EXCLUDED.reghrs, tardy=EXCLUDED.tardy, undertime=EXCLUDED.undertime, "
+        "nphrs=EXCLUDED.nphrs, recalcflg='N', changeby=EXCLUDED.changeby, changedate=EXCLUDED.changedate",
+        company, emp_id, d.isoformat(), daycd, shift, dayoff, *slots,
+        stdhours, std["in"], std["bo"], std["bi"], std["out"],
+        res["tlhours"], res["reghrs"], res["tardy"], res["undertime"], res["nphrs"],
+        "N", user, now)
+    return res
 
 
 if __name__ == "__main__":

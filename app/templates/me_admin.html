@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Mobile Time Clock · HRPayroll L98{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{{ ab.bar(back_url=url_for('dashboard', mode=mode, company=company),
+          exit_url=url_for('dashboard', mode=mode, company=company)) }}
+{% endblock %}
+
+{% block content %}
+<div class="screen-head">
+  <h1>Mobile Time Clock</h1>
+  <p class="crumb">Employee phone clock — enrollment &amp; PINs · {{ comp_map.get(company, '') }}</p>
+</div>
+
+<section class="panel lnw">
+  <p class="note dim" style="margin-top:0">Employees clock in at <strong class="mono">/me</strong> on their phone
+    (Add to Home Screen makes it an app). Enroll them here — the generated PIN shows <em>once</em>, in the
+    green message; they replace it at first sign-in. Punches land in the time card automatically.</p>
+
+  <form class="bar" method="get">
+    <input type="hidden" name="mode" value="{{ mode }}"><input type="hidden" name="company" value="{{ company }}">
+    <label class="fld">Enroll someone
+      <input type="text" name="qq" value="{{ qq }}" maxlength="40" placeholder="badge or name" autocomplete="off">
+    </label>
+    <button class="go" type="submit">Search</button>
+  </form>
+
+  {% if matches %}
+  <div class="ln-scroll">
+    <table class="ln">
+      <thead><tr><th></th><th>Badge No.</th><th>Employee</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      {% for m in matches %}
+        <tr>
+          <td class="idx">{{ loop.index }}.</td>
+          <td class="doc">{{ m.emp_id }}</td>
+          <td>{{ m.empname }}</td>
+          <td><span class="chip {{ m.empsts | tone }}">{{ m.empsts | est }}</span></td>
+          <td class="row-actions">
+            <form method="post" action="{{ url_for('me_admin_setpin', company=company, mode=mode) }}">
+              <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+              <input type="hidden" name="emp_id" value="{{ m.emp_id }}">
+              <input type="hidden" name="qq" value="{{ qq }}">
+              <button type="submit" class="edit-lnk" onclick="return confirm('Generate a mobile-clock PIN for {{ m.emp_id }}?')">enroll + PIN</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif qq %}
+  <p class="note dim" style="margin-top:12px">No un-enrolled employee matches “{{ qq }}”.</p>
+  {% endif %}
+
+  <div class="ln-scroll" style="margin-top:16px">
+    <table class="ln">
+      <thead><tr><th></th><th>Badge No.</th><th>Employee</th><th>Status</th><th>PIN</th><th>Last punch</th><th></th></tr></thead>
+      <tbody>
+      {% for r in enrolled %}
+        <tr>
+          <td class="idx">{{ loop.index }}.</td>
+          <td class="doc">{{ r.emp_id }}</td>
+          <td>{{ r.empname }}</td>
+          <td>{{ 'disabled' if not r.active else ('issued — first sign-in pending' if r.must_change else 'active') }}</td>
+          <td class="row-actions" style="white-space:nowrap">
+            <form method="post" action="{{ url_for('me_admin_setpin', company=company, mode=mode) }}" style="display:inline">
+              <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+              <input type="hidden" name="emp_id" value="{{ r.emp_id }}">
+              <button type="submit" class="edit-lnk" onclick="return confirm('Issue a NEW PIN for {{ r.emp_id }}? The old one stops working.')">reset PIN</button>
+            </form>
+          </td>
+          <td class="d">{{ r.last_punch | dt if r.last_punch else '—' }}</td>
+          <td class="row-actions">
+            <form method="post" action="{{ url_for('me_admin_toggle', company=company, mode=mode) }}">
+              <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+              <input type="hidden" name="emp_id" value="{{ r.emp_id }}">
+              <button type="submit" class="del-lnk">{{ 'enable' if not r.active else 'disable' }}</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="empty" style="text-align:center;padding:18px">Nobody enrolled in
+          {{ comp_map.get(company,'this company') }} yet — search above to enroll the first employee.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="note">{{ enrolled | length }} enrolled{% if enrolled %} · PIN column shows sign-in state, not the PIN{% endif %}.</p>
+</section>
+{% endblock %}

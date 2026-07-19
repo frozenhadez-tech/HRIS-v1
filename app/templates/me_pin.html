@@ -1,0 +1,25 @@
+{% extends "me_base.html" %}
+{% block title %}Change PIN{% endblock %}
+{% block content %}
+<header class="topbar">
+  <div><strong>{{ me.name }}</strong><span class="mono dim">{{ me.emp }} · Co {{ me.co }}</span></div>
+  <a class="lnk" href="{{ url_for('me.logout') }}">Sign out</a>
+</header>
+
+<form method="post" class="card form">
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+  <h2>{{ 'Set your own PIN' if forced else 'Change PIN' }}</h2>
+  {% if forced %}<p class="hint">You're using the PIN HR issued — pick your own before clocking in.</p>{% endif %}
+  <label>New PIN (4–8 digits)
+    <input type="password" name="pin1" inputmode="numeric" minlength="4" maxlength="8"
+           pattern="[0-9]{4,8}" autocomplete="new-password" required autofocus>
+  </label>
+  <label>Repeat it
+    <input type="password" name="pin2" inputmode="numeric" minlength="4" maxlength="8"
+           pattern="[0-9]{4,8}" autocomplete="new-password" required>
+  </label>
+  {% if error %}<p class="err">{{ error }}</p>{% endif %}
+  <button type="submit" class="big">Save PIN</button>
+  {% if not forced %}<a class="lnk center" href="{{ url_for('me.index') }}">‹ Back to the clock</a>{% endif %}
+</form>
+{% endblock %}

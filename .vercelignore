@@ -5,3 +5,4 @@ scratchpad/
 app/migrate.py
 app/setup_auth.py
 app/setup_emptables.py
+app/setup_me.py

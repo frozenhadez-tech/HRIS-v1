@@ -71,10 +71,16 @@ def logout():
 
 @app.before_request
 def guard():
+    if request.blueprint == "me":
+        return                        # the employee portal gates itself (me.py _gate)
     if request.endpoint in ("login", "static") or request.path.startswith("/static"):
         return
     if not session.get("user"):
         return redirect(url_for("login", next=request.full_path))
+
+
+import me as me_portal  # noqa: E402  (imports db/attendance_engine only — no cycle)
+app.register_blueprint(me_portal.bp)
 
 
 # ─────────────────────────────────────────────────────────── lookups / filters
@@ -1505,6 +1511,52 @@ def ratechange_delete():
         _set_current_rate(company, emp_id, latest["newrate"], latest["np"] or "M", user, now)
     flash(f"Rate change removed for {emp_id}.", "ok")
     return redirect(url_for("ratechange", company=company, emp_id=emp_id, mode=mode))
+
+
+@app.route("/me/admin")
+def me_admin():
+    """Mobile Time Clock admin (HR) — enroll employees for the /me phone clock,
+    hand out PINs, disable lost phones. The PIN shows once, in the flash."""
+    company = sel_company()
+    term = (request.args.get("qq") or "").strip()
+    enrolled = q("SELECT RTRIM(a.emp_id) AS emp_id, RTRIM(p.lastname)||', '||RTRIM(COALESCE(p.firstname,'')) AS empname, "
+                 "RTRIM(COALESCE(p.empsts,'')) AS empsts, a.must_change, a.active, "
+                 "(SELECT MAX(pl.punch_at) FROM punchlog pl WHERE pl.company=a.company AND pl.emp_id=a.emp_id) AS last_punch "
+                 "FROM emp_auth a JOIN personnel p ON p.company=a.company AND p.emp_id=a.emp_id "
+                 "WHERE a.company=? ORDER BY p.lastname, p.firstname", company)
+    have = {r["emp_id"] for r in enrolled}
+    matches = [m for m in (_emp_search(company, term) if term else []) if m["emp_id"] not in have]
+    return render_template("me_admin.html", enrolled=enrolled, matches=matches, qq=term)
+
+
+@app.route("/me/admin/setpin", methods=["POST"])
+def me_admin_setpin():
+    company = sel_company()
+    mode = request.args.get("mode", "PY")
+    emp_id = (request.form.get("emp_id") or "").strip()
+    if not emp_id or not one("SELECT 1 AS x FROM personnel WHERE company=? AND RTRIM(emp_id)=?", company, emp_id):
+        abort(400)
+    pin = f"{secrets.randbelow(1000000):06d}"
+    user, now = session.get("user", {}).get("id", ""), datetime.datetime.now()
+    db.execute("INSERT INTO emp_auth (company, emp_id, pin_hash, must_change, active, created_by, created_at) "
+               "VALUES (?,?,?,true,true,?,?) "
+               "ON CONFLICT (company, emp_id) DO UPDATE SET pin_hash=EXCLUDED.pin_hash, "
+               "must_change=true, active=true, changed_at=EXCLUDED.created_at",
+               company, emp_id, auth.hash_password(pin), user, now)
+    flash(f"PIN for {emp_id}: {pin} — hand it to the employee. They'll be asked to replace it "
+          f"on first sign-in at /me on their phone.", "ok")
+    return redirect(url_for("me_admin", company=company, mode=mode, qq=request.form.get("qq", "")))
+
+
+@app.route("/me/admin/toggle", methods=["POST"])
+def me_admin_toggle():
+    company = sel_company()
+    mode = request.args.get("mode", "PY")
+    emp_id = (request.form.get("emp_id") or "").strip()
+    db.execute("UPDATE emp_auth SET active=NOT active, changed_at=? WHERE company=? AND RTRIM(emp_id)=?",
+               datetime.datetime.now(), company, emp_id)
+    flash(f"Mobile clock access toggled for {emp_id}.", "ok")
+    return redirect(url_for("me_admin", company=company, mode=mode))
 
 
 @app.route("/engine/verify")
