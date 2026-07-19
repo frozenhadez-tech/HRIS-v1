@@ -89,11 +89,11 @@ GRIDS = {
         "title": "Users", "subtitle": "Application accounts — create, edit, reset passwords, remove",
         "sql": "SELECT RTRIM(u.user_id) AS user_id, RTRIM(COALESCE(u.user_name,'')) AS user_name, RTRIM(COALESCE(u.class,'')) AS class, "
                "CASE WHEN u.disabled IS NULL THEN 'Active' ELSE 'Disabled' END AS state, "
-               "u.lastsignon, RTRIM(COALESCE(u.currentpgm,'')) AS currentpgm, RTRIM(COALESCE(u.emp_id,'')) AS emp_id "
+               "u.lastsignon, RTRIM(COALESCE(u.emp_id,'')) AS emp_id "
                "FROM users u ORDER BY u.user_id",
         "cols": [("user_id", "User ID", "m"), ("user_name", "Name", ""), ("class", "Class", "c"),
                  ("state", "State", "c"), ("lastsignon", "Last Sign-on", "d"),
-                 ("currentpgm", "Default Program", ""), ("emp_id", "Emp No", "m")],
+                 ("emp_id", "Emp No", "m")],
     },
     # ── Org structure ──────────────────────────────────────────────────────
     "jobcode": {
@@ -402,8 +402,7 @@ EDITABLE = {
     # generated password (shown once in the flash) and rows get a reset-password action
     "users": {"table": "users", "pk": ["user_id"], "stamps": [("change_date", "now")], "fields": [
         ("user_id", "User ID", "text"), ("user_name", "Full name", "text"),
-        ("class", "Class (Q/U)", "text"), ("emp_id", "Badge / Emp No", "text"),
-        ("currentpgm", "Default program", "text")]},
+        ("class", "Class (Q/U)", "text"), ("emp_id", "Badge / Emp No", "text")]},
 }
 for _k, _meta in EDITABLE.items():
     if _k in GRIDS:
