@@ -16,7 +16,7 @@
   {% if p.job %}<p class="job">{{ p.job }}</p>{% endif %}
   <span class="stschip {{ 'off' if p.sts == 'X' }}">{{ status or '—' }}</span>
   <a class="editbtn" href="{{ url_for('me.profile_edit') }}">✎ Edit contact details</a>
-  <a class="editbtn attbtn" href="{{ url_for('me.index') }}" id="attbtn">
+  <a class="editbtn attbtn" href="{{ url_for('me.attendance') }}" id="attbtn">
     <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" style="vertical-align:-3px"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
     Attendance
   </a>

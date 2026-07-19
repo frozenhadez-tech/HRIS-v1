@@ -189,6 +189,11 @@ dialog.qa::backdrop { background: rgba(24, 22, 16, .5); }
   .card { border: 0; box-shadow: none; }
 }
 
+/* leave */
+.lv-bal { margin-bottom: 12px; }
+.lv-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; }
+.rqcard.lv { border-left-color: var(--go); }
+
 /* bottom tab bar */
 body { padding-bottom: 66px; }
 .tabbar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; z-index: 10;

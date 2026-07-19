@@ -1,8 +1,8 @@
-{# Bottom tab bar for the employee portal. Set `active` = clock | att | profile. #}
+{# Bottom tab bar for the employee portal. Set `active` = leave | att | comp | profile. #}
 <nav class="tabbar">
-  <a href="{{ url_for('me.index') }}" class="{{ 'on' if active == 'clock' }}">
-    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-    Clock
+  <a href="{{ url_for('me.leave') }}" class="{{ 'on' if active == 'leave' }}">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 12h18"/></svg>
+    Leave
   </a>
   <a href="{{ url_for('me.attendance') }}" class="{{ 'on' if active == 'att' }}">
     <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>

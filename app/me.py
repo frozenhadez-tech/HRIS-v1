@@ -113,17 +113,63 @@ def _assign_day(company: str, emp_id: str, now: datetime.datetime):
 
 @bp.route("/", methods=["GET"])
 def index():
+    # the portal home is the profile; punching lives in its Quick Actions dialog
+    return redirect(url_for("me.profile"))
+
+
+@bp.route("/leave")
+def leave():
+    """Leave management — balances from the official `leaves` entitlements, the
+    employee's portal requests, and their recorded leaves (leavetran)."""
     m = session["me"]
-    now = now_ph()
-    day, next_kind = _assign_day(m["co"], m["emp"], now)
-    punches = q("SELECT local_hhmm, kind, punch_at, lat FROM punchlog "
-                "WHERE company=? AND emp_id=? AND local_date=? ORDER BY punch_at, id",
-                m["co"], m["emp"], day.isoformat())
-    sch = ae.schedule(m["co"], m["emp"], day)
-    tc = one("SELECT tlhours, reghrs, tardy, undertime, nphrs FROM timecard "
-             "WHERE company=? AND emp_id=? AND trdate=?", m["co"], m["emp"], day.isoformat())
-    return render_template("me_clock.html", me=m, now=now, day=day, next_kind=next_kind,
-                           punches=punches, sch=sch, tc=tc, active="clock")
+    balances = q("SELECT RTRIM(l.lvcode) AS code, RTRIM(COALESCE(i.descrip, l.lvcode)) AS descrip, "
+                 "COALESCE(l.dayern,0) AS earned, COALESCE(l.dayuse,0) AS used "
+                 "FROM leaves l LEFT JOIN payitem i ON i.company=l.company AND i.payitem=l.lvcode "
+                 "WHERE l.company=? AND RTRIM(l.emp_id)=? ORDER BY l.lvcode", m["co"], m["emp"])
+    for b in balances:
+        b["earned"], b["used"] = float(b["earned"]), float(b["used"])
+        b["left"] = round(b["earned"] - b["used"], 2)
+    types = balances or q(
+        "SELECT DISTINCT RTRIM(l.lvcode) AS code, RTRIM(COALESCE(i.descrip, l.lvcode)) AS descrip "
+        "FROM leaves l LEFT JOIN payitem i ON i.company=l.company AND i.payitem=l.lvcode "
+        "WHERE l.company=? ORDER BY 1", m["co"])
+    reqs = q("SELECT lr.id, RTRIM(lr.payitem) AS code, RTRIM(COALESCE(i.descrip, lr.payitem)) AS descrip, "
+             "lr.frdate, lr.todate, lr.days, RTRIM(COALESCE(lr.reason,'')) AS reason, "
+             "RTRIM(lr.status) AS status, lr.created_at "
+             "FROM leave_request lr LEFT JOIN payitem i ON i.company=lr.company AND i.payitem=lr.payitem "
+             "WHERE lr.company=? AND RTRIM(lr.emp_id)=? ORDER BY lr.created_at DESC, lr.id DESC",
+             m["co"], m["emp"])
+    taken = q("SELECT RTRIM(lt.payitem) AS code, RTRIM(COALESCE(i.descrip, lt.payitem)) AS descrip, "
+              "lt.frdate, lt.todate, RTRIM(COALESCE(lt.reason,'')) AS reason "
+              "FROM leavetran lt LEFT JOIN payitem i ON i.company=lt.company AND i.payitem=lt.payitem "
+              "WHERE lt.company=? AND RTRIM(lt.emp_id)=? ORDER BY lt.frdate DESC LIMIT 8",
+              m["co"], m["emp"])
+    return render_template("me_leave.html", me=m, balances=balances, types=types,
+                           reqs=reqs, taken=taken, today=now_ph().date().isoformat(),
+                           active="leave")
+
+
+@bp.route("/leave/request", methods=["POST"])
+def leave_request():
+    m = session["me"]
+    code = (request.form.get("payitem") or "").strip()
+    reason = (request.form.get("reason") or "").strip()[:120]
+    try:
+        fr = datetime.date.fromisoformat((request.form.get("frdate") or "").strip())
+        to = datetime.date.fromisoformat((request.form.get("todate") or "").strip())
+    except ValueError:
+        fr = to = None
+    ok_types = {t["code"] for t in q("SELECT DISTINCT RTRIM(lvcode) AS code FROM leaves WHERE company=?", m["co"])}
+    if not code or code not in ok_types or not fr or not to or to < fr or (to - fr).days >= 60 or not reason:
+        flash("Leave type, a valid date range (up to 60 days) and a reason are all required.", "error")
+    else:
+        days = (to - fr).days + 1
+        execute("INSERT INTO leave_request (company, emp_id, payitem, frdate, todate, days, reason, status, created_at) "
+                "VALUES (?,?,?,?,?,?,?, 'P', ?)",
+                m["co"], m["emp"], code, fr.isoformat(), to.isoformat(), days, reason, now_ph())
+        flash(f"Leave request for {fr:%b %d}–{to:%b %d} ({days} day{'s' if days != 1 else ''}) "
+              "submitted — HR will review it.", "ok")
+    return redirect(url_for("me.leave"))
 
 
 @bp.route("/punch", methods=["POST"])
@@ -148,9 +194,7 @@ def punch():
             ip, (request.user_agent.string or "")[:200])
     ae.rebuild_punch_day(m["co"], m["emp"], day, user=m["emp"])
     flash(f"Timed {kind} at {now:%H:%M}.", "ok")
-    if (request.form.get("back") or "").strip() == "profile":
-        return redirect(url_for("me.profile", att=1))
-    return redirect(url_for("me.index"))
+    return redirect(url_for("me.profile", att=1))
 
 
 @bp.route("/attendance")

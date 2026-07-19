@@ -1,0 +1,96 @@
+{% extends "me_base.html" %}
+{% block title %}Leave{% endblock %}
+{% block content %}
+<header class="topbar">
+  <div><strong>{{ me.name }}</strong><span class="mono dim">{{ me.emp }} · Co {{ me.co }}</span></div>
+  <a class="lnk" href="{{ url_for('me.logout') }}">Sign out</a>
+</header>
+
+<section class="card">
+  <h2>Leave Balances</h2>
+  {% for b in balances %}
+  <div class="lv-bal">
+    <div class="lv-top"><b>{{ b.descrip }}</b>
+      <span class="mono"><b>{{ '%g' % b.left }}</b> <span class="dim">of {{ '%g' % b.earned }} left</span></span></div>
+    <div class="bar"><i style="width:{{ ((b.left / b.earned * 100) if b.earned else 0) | round(1) }}%"></i></div>
+    <p class="hint" style="margin:2px 0 0">Used {{ '%g' % b.used }} day{{ 's' if b.used != 1 }}.</p>
+  </div>
+  {% else %}
+  <p class="dim">No leave entitlements are set up for you yet — ask HR.</p>
+  {% endfor %}
+  <button type="button" class="big" id="lvbtn" style="margin-top:12px">File Leave Request</button>
+</section>
+
+<section class="card">
+  <h2>Leave Requests</h2>
+  <p class="hint" style="margin-top:-4px">Your requests and their current status.</p>
+  {% for r in reqs %}
+  <div class="rqcard lv {{ 'xtra hidden' if loop.index > 3 }}">
+    <div class="rq-top"><b>{{ r.frdate.strftime('%b %d') }}{% if r.todate != r.frdate %} – {{ r.todate.strftime('%b %d, %Y') }}{% else %}, {{ r.frdate.strftime('%Y') }}{% endif %}</b>
+      <span class="stpill st-{{ r.status }}">{{ {'P':'Pending','A':'Approved','D':'Denied'}.get(r.status, r.status) }}</span></div>
+    <div class="rq-reason">{{ r.descrip }} · {{ r.reason }}</div>
+    <div class="hint">{{ '%g' % r.days }} day{{ 's' if r.days != 1 }} · Submitted: {{ r.created_at.strftime('%a, %b %d, %Y') }}</div>
+  </div>
+  {% else %}
+  <p class="dim" style="font-size:13px">None filed yet.</p>
+  {% endfor %}
+  {% if reqs | length > 3 %}
+  <button type="button" class="viewall" id="lvmore" data-on="0">Show all requests ({{ reqs | length }})</button>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Recorded Leaves</h2>
+  <p class="hint" style="margin-top:-4px">Leaves already on your official record.</p>
+  {% for t in taken %}
+  <div class="qa-row" style="border-bottom:1px dashed var(--line)">
+    <span>{{ t.frdate | dt }}{% if t.todate and t.todate != t.frdate %} – {{ t.todate | dt }}{% endif %}
+      <span class="dim">· {{ t.descrip }}{% if t.reason %} · {{ t.reason }}{% endif %}</span></span>
+  </div>
+  {% else %}
+  <p class="dim" style="font-size:13px">None on record.</p>
+  {% endfor %}
+</section>
+
+<dialog id="lvdlg" class="qa">
+  <div class="qa-head">
+    <h3>File Leave Request</h3>
+    <button type="button" class="qa-x" data-qa-close aria-label="Close">✕</button>
+  </div>
+  <form method="post" action="{{ url_for('me.leave_request') }}" class="form" style="margin-top:6px">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <label>Leave type
+      <select name="payitem" required>
+        {% for t in types %}<option value="{{ t.code }}">{{ t.descrip }}{% if t.left is defined %} ({{ '%g' % t.left }} left){% endif %}</option>{% endfor %}
+      </select>
+    </label>
+    <label>From<input type="date" name="frdate" value="{{ today }}" required></label>
+    <label>To<input type="date" name="todate" value="{{ today }}" required></label>
+    <label>Reason<input type="text" name="reason" maxlength="120" required placeholder="e.g. family occasion"></label>
+    <button type="submit" class="big" style="margin-top:4px">Submit request</button>
+    <p class="hint">Goes to HR as <b>Pending</b> — once approved it lands on your official leave record.</p>
+  </form>
+</dialog>
+{% include "_me_nav.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var dlg = document.getElementById('lvdlg'), btn = document.getElementById('lvbtn');
+  if (dlg && dlg.showModal && btn) {
+    btn.addEventListener('click', function () { dlg.showModal(); });
+    dlg.addEventListener('click', function (e) {
+      if (e.target === dlg || (e.target.closest && e.target.closest('[data-qa-close]'))) dlg.close();
+    });
+  }
+  var more = document.getElementById('lvmore');
+  if (more) more.addEventListener('click', function () {
+    var open = more.getAttribute('data-on') === '1';
+    document.querySelectorAll('.rqcard.xtra').forEach(function (c) { c.classList.toggle('hidden', open); });
+    more.setAttribute('data-on', open ? '0' : '1');
+    more.textContent = open ? 'Show all requests ({{ reqs | length }})' : 'Show fewer';
+  });
+})();
+</script>
+{% endblock %}

@@ -1557,23 +1557,56 @@ def me_admin_setpin():
 
 @app.route("/timereqs")
 def timereqs():
-    """Time Requests (HR) — approve or deny the OT/undertime requests employees file
-    from their phones. Approving an overtime request also stamps that day's time card
-    (othrs + approvot), the legacy per-day OT approval the attendance engine honors."""
+    """Employee Requests (HR) — every OT, undertime and leave request filed from the
+    phones. Approving overtime stamps the day's time card and files the payroll OT
+    entry; approving a leave lands it on the official leave record (leavetran)."""
     company = sel_company()
     st = (request.args.get("st") or "P").upper()
-    where, params = ["t.company=?"], [company]
-    if st in ("P", "A", "D"):
-        where.append("RTRIM(t.status)=?")
-        params.append(st)
+    cond = "" if st not in ("P", "A", "D") else " AND RTRIM(t.status)=?"
+    params = [company] + ([st] if cond else [])
     rows = q("SELECT t.id, RTRIM(t.emp_id) AS emp_id, RTRIM(p.lastname)||', '||RTRIM(COALESCE(p.firstname,'')) AS empname, "
              "RTRIM(t.rtype) AS rtype, t.reqdate, t.hours, RTRIM(COALESCE(t.reason,'')) AS reason, "
              "RTRIM(t.status) AS status, t.created_at, RTRIM(COALESCE(t.decided_by,'')) AS decided_by "
              "FROM time_request t LEFT JOIN personnel p ON p.company=t.company AND p.emp_id=t.emp_id "
-             "WHERE " + " AND ".join(where) + " ORDER BY t.created_at DESC, t.id DESC LIMIT 300", *params)
+             "WHERE t.company=?" + cond + " ORDER BY t.created_at DESC, t.id DESC LIMIT 300", *params)
+    lrows = q("SELECT t.id, RTRIM(t.emp_id) AS emp_id, RTRIM(p.lastname)||', '||RTRIM(COALESCE(p.firstname,'')) AS empname, "
+              "RTRIM(t.payitem) AS payitem, RTRIM(COALESCE(i.descrip, t.payitem)) AS descrip, "
+              "t.frdate, t.todate, t.days, RTRIM(COALESCE(t.reason,'')) AS reason, "
+              "RTRIM(t.status) AS status, t.created_at, RTRIM(COALESCE(t.decided_by,'')) AS decided_by "
+              "FROM leave_request t LEFT JOIN personnel p ON p.company=t.company AND p.emp_id=t.emp_id "
+              "LEFT JOIN payitem i ON i.company=t.company AND i.payitem=t.payitem "
+              "WHERE t.company=?" + cond + " ORDER BY t.created_at DESC, t.id DESC LIMIT 300", *params)
     counts = {r["s"]: r["n"] for r in q(
-        "SELECT RTRIM(status) AS s, COUNT(*) AS n FROM time_request WHERE company=? GROUP BY status", company)}
-    return render_template("timereqs.html", rows=rows, st=st, counts=counts)
+        "SELECT s, SUM(n) AS n FROM ("
+        "  SELECT RTRIM(status) AS s, COUNT(*) AS n FROM time_request WHERE company=? GROUP BY status"
+        "  UNION ALL SELECT RTRIM(status), COUNT(*) FROM leave_request WHERE company=? GROUP BY status"
+        ") x GROUP BY s", company, company)}
+    return render_template("timereqs.html", rows=rows, lrows=lrows, st=st, counts=counts)
+
+
+def _decide_leave_request(company, rid, act, user):
+    """Approve/deny a leave request. Approval writes the leave onto the official
+    record (leavetran) — which the 201 file, balances and reports all read."""
+    r = one("SELECT RTRIM(emp_id) AS emp_id, RTRIM(payitem) AS payitem, frdate, todate, "
+            "RTRIM(COALESCE(reason,'')) AS reason, RTRIM(status) AS status, created_at "
+            "FROM leave_request WHERE company=? AND id=?", company, rid)
+    if not r or act not in ("approve", "deny"):
+        return None
+    if r["status"] != "P":
+        return f"Leave request for {r['emp_id']} was already decided."
+    user_now = datetime.datetime.now()
+    status = "A" if act == "approve" else "D"
+    db.execute("UPDATE leave_request SET status=?, decided_by=?, decided_at=? WHERE company=? AND id=?",
+               status, user, user_now, company, rid)
+    note = f"Leave {'approved' if status == 'A' else 'denied'} for {r['emp_id']}."
+    if status == "A":
+        db.execute("INSERT INTO leavetran (company, emp_id, payitem, frdate, todate, datefiled, "
+                   "reason, changeby, changedate) VALUES (?,?,?,?,?,?,?,?,?)",
+                   company, r["emp_id"], r["payitem"], r["frdate"].isoformat(), r["todate"].isoformat(),
+                   r["created_at"].date().isoformat(), r["reason"], user, user_now)
+        note += (f" Recorded on the official leave record: {r['frdate']:%b %d}–{r['todate']:%b %d}"
+                 f" ({r['payitem']}).")
+    return note
 
 
 def _default_ot_item(company):
@@ -1628,9 +1661,10 @@ def _decide_time_request(company, rid, act, user, payitem=None):
 def timereqs_act():
     company = sel_company()
     mode = request.args.get("mode", "PY")
-    note = _decide_time_request(company, request.form.get("id", type=int),
-                                (request.form.get("act") or "").strip(),
-                                session.get("user", {}).get("id", ""))
+    decide = _decide_leave_request if request.form.get("kind") == "leave" else _decide_time_request
+    note = decide(company, request.form.get("id", type=int),
+                  (request.form.get("act") or "").strip(),
+                  session.get("user", {}).get("id", ""))
     if note is None:
         abort(400)
     flash(note, "ok")
