@@ -1,0 +1,98 @@
+{% extends "me_base.html" %}
+{% block title %}My Compensation{% endblock %}
+{% block content %}
+<header class="topbar">
+  <div><strong>My Compensation</strong><span class="mono dim">{{ me.emp }} · Co {{ me.co }}</span></div>
+  <a class="lnk" href="{{ url_for('me.logout') }}">Sign out</a>
+</header>
+<p class="hint" style="margin:0 2px 12px">Salary structure, benefits and deductions — from the same
+  tables payroll runs on.</p>
+
+{% if latest and latest.net %}
+<section class="card">
+  <div class="kv1">
+    <div><span class="k">Latest recorded payslip · {{ latest_label }}</span>
+      <span class="v mono" style="font-size:20px">₱ {{ latest.net | peso }} <span class="dim" style="font-size:12px;font-weight:400">net pay</span></span></div>
+  </div>
+</section>
+{% endif %}
+
+<div class="statgrid">
+  <div class="stat"><span class="k">Monthly salary</span>
+    <span class="v mono">{{ '₱ ' + (salary | peso) if pt != 'D' else 'N/A' }}</span></div>
+  <div class="stat"><span class="k">Daily rate</span>
+    <span class="v mono">{{ '₱ ' + (salary | peso) if pt == 'D' else 'N/A' }}</span></div>
+  <div class="stat"><span class="k">Allowances / month</span>
+    <span class="v mono">₱ {{ allow | peso }}</span></div>
+  <div class="stat"><span class="k">Total monthly</span>
+    <span class="v mono">₱ {{ total_monthly | peso }}</span></div>
+</div>
+
+<section class="card">
+  <h2>Compensation Breakdown</h2>
+  <div class="brk">
+    <div class="row"><span>Base {{ 'pay (monthly equivalent)' if pt == 'D' else 'salary' }}</span>
+      <b class="mono">₱ {{ equiv | peso }}</b></div>
+    <div class="bar"><i style="width:{{ (equiv / total_monthly * 100) | round(1) if total_monthly else 0 }}%"></i></div>
+    <p class="hint">Your fixed {{ 'daily rate × working days' if pt == 'D' else 'monthly salary' }} as per employment record.</p>
+    <div class="row"><span>Allowances</span><b class="mono">₱ {{ allow | peso }}</b></div>
+    <div class="bar"><i class="lite" style="width:{{ (allow / total_monthly * 100) | round(1) if total_monthly else 0 }}%"></i></div>
+    <p class="hint">Fixed allowances set up on your record (transportation, meal, and similar).</p>
+    <div class="row"><span>Pay calculation type</span>
+      <span class="paychip">{{ 'DAILY' if pt == 'D' else 'MONTHLY' }}</span></div>
+    <p class="hint">How your pay is computed each half-month period.</p>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Annual Compensation</h2>
+  <p class="hint" style="margin-top:-4px">Your yearly package including 13th-month pay.</p>
+  <div class="kv1">
+    <div><span class="k">Annual base salary</span><span class="v mono">₱ {{ annual.base | peso }}</span></div>
+    <div><span class="k">Annual allowances</span><span class="v mono">₱ {{ annual.allow | peso }}</span></div>
+    <div><span class="k">13th month pay</span><span class="v mono">₱ {{ annual.thirteenth | peso }}</span></div>
+  </div>
+  <div class="totrow"><span>Total annual package</span><b class="mono">₱ {{ annual.total | peso }}</b></div>
+  <ul class="mini">
+    <li>13th-month pay is mandatory under the Philippine Labor Code.</li>
+    <li>Paid annually, usually in December.</li>
+    <li>Equivalent to 1/12 of your total annual basic salary.</li>
+  </ul>
+</section>
+
+{% if monthly %}
+<section class="card">
+  <h2>Monthly Deductions</h2>
+  <p class="hint" style="margin-top:-4px">What payroll would deduct for {{ month_name }}, from your
+    current salary, loans and the statutory tables.</p>
+  <div class="dedlist">
+    <div class="ded"><div><b>SSS Contribution</b><span class="hint">Social Security System — retirement &amp; disability benefits</span></div>
+      <b class="mono">₱ {{ monthly.sss | peso }}</b></div>
+    <div class="ded"><div><b>PhilHealth Contribution</b><span class="hint">Health insurance coverage for medical expenses</span></div>
+      <b class="mono">₱ {{ monthly.phic | peso }}</b></div>
+    <div class="ded"><div><b>Pag-IBIG Contribution</b><span class="hint">Housing fund for home loans and savings</span></div>
+      <b class="mono">₱ {{ monthly.hdmf | peso }}</b></div>
+    <div class="ded"><div><b>Withholding Tax</b><span class="hint">Income tax based on the TRAIN law brackets</span></div>
+      <b class="mono">₱ {{ monthly.tax | peso }}</b></div>
+    {% for o in others %}
+    <div class="ded"><div><b>{{ o.descrip }}</b><span class="hint">Deducted through payroll</span></div>
+      <b class="mono">₱ {{ o.amount | peso }}</b></div>
+    {% endfor %}
+  </div>
+  <div class="totrow"><span>Total monthly deductions</span><b class="mono">₱ {{ monthly.total | peso }}</b></div>
+</section>
+
+<section class="card">
+  <h2>Net Salary Calculation</h2>
+  <div class="kv1">
+    <div><span class="k">Gross monthly (incl. allowances)</span><span class="v mono">₱ {{ monthly.gross | peso }}</span></div>
+    <div><span class="k">Total deductions</span><span class="v mono">− ₱ {{ monthly.total | peso }}</span></div>
+  </div>
+  <div class="totrow big"><span>Estimated net / month</span><b class="mono">₱ {{ monthly.net | peso }}</b></div>
+  <p class="hint">Estimated from your current record — actual payslips vary with attendance,
+    overtime and any adjustments.</p>
+</section>
+{% endif %}
+
+{% include "_me_nav.html" %}
+{% endblock %}

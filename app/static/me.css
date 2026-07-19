@@ -98,6 +98,25 @@ table.att tr.off td { color: var(--ink-soft); opacity: .65; }
   border-radius: 6px; padding: 2px 12px; font-family: var(--mono); font-size: 12px; font-weight: 700;
   letter-spacing: 1px; }
 
+/* compensation */
+.statgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.stat { background: #fffdf6; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.stat .v { font-size: 16px; }
+.brk .row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 10px; font-size: 14px; }
+.bar { height: 8px; background: var(--paper-deep); border-radius: 5px; margin: 6px 0 4px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--go); border-radius: 5px; }
+.bar i.lite { background: #9dc3ae; }
+.totrow { display: flex; justify-content: space-between; align-items: baseline; margin-top: 12px;
+  padding: 10px 12px; background: var(--paper-deep); border: 1px solid var(--line); border-radius: 8px;
+  font-size: 14px; font-weight: 700; }
+.totrow.big b { font-size: 19px; }
+.mini { margin: 12px 0 0; padding-left: 18px; color: var(--ink-soft); font-size: 12.5px; }
+.mini li { margin-bottom: 3px; }
+.dedlist .ded { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
+.dedlist .ded .hint { display: block; margin-top: 1px; }
+.dedlist .ded > b.mono { white-space: nowrap; }
+
 /* bottom tab bar */
 body { padding-bottom: 66px; }
 .tabbar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; z-index: 10;

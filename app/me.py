@@ -327,6 +327,81 @@ def profile_edit():
                            widths=_contact_widths(), active="profile")
 
 
+PP_LABEL = {"1": "1st half", "2": "2nd half", "X": "special"}
+
+
+@bp.route("/compensation")
+def compensation():
+    """My Compensation — salary structure, annual package and the deductions the
+    payroll engine would take THIS month from the current setup (statutory tables,
+    allowances, active loans). Estimates, clearly labeled; payslips stay authoritative."""
+    m = session["me"]
+    pay = one("SELECT COALESCE(salary,0) AS salary, RTRIM(COALESCE(paytype,'')) AS paytype "
+              "FROM payroll WHERE company=? AND RTRIM(emp_id)=?", m["co"], m["emp"])
+    salary = float(pay["salary"]) if pay else 0.0
+    pt = (pay["paytype"] if pay else "") or "M"
+    allow = one("SELECT COALESCE(SUM(amount * CASE WHEN RTRIM(COALESCE(freq,''))='9' THEN 2 ELSE 1 END),0) AS a "
+                "FROM fixallow WHERE company=? AND RTRIM(emp_id)=?", m["co"], m["emp"])
+    allow_m = float(allow["a"] or 0)
+
+    if pt == "D":
+        import payroll_engine as pe
+        try:
+            equiv = round(salary * float(pe.coparam(m["co"])["baseday"]), 2)
+        except Exception:
+            equiv = round(salary * 26.0, 2)
+    else:
+        equiv = salary
+    annual = {"base": round(equiv * 12, 2), "allow": round(allow_m * 12, 2),
+              "thirteenth": round(equiv, 2)}
+    annual["total"] = round(annual["base"] + annual["allow"] + annual["thirteenth"], 2)
+
+    today = now_ph().date()
+    monthly, others = None, []
+    try:
+        import payroll_calc
+        agg = {"gross": 0.0, "sss": 0.0, "phic": 0.0, "hdmf": 0.0, "tax": 0.0,
+               "total": 0.0, "net": 0.0}
+        oth = {}
+        for per in ("1", "2"):
+            r = payroll_calc.compute(m["co"], m["emp"], today.year, today.month, per)
+            agg["gross"] += r["gross"]
+            agg["tax"] += r["tax"]
+            agg["total"] += r["total_ded"]
+            agg["net"] += r["net"]
+            for l in r["deductions"]:
+                code = (l.get("payitem") or "").strip()
+                if code == "402":
+                    agg["sss"] += float(l["amount"])
+                elif code == "403":
+                    agg["phic"] += float(l["amount"])
+                elif code == "404":
+                    agg["hdmf"] += float(l["amount"])
+                elif code != "401":                      # 401 (tax) already in agg["tax"]
+                    d = l.get("descrip") or code
+                    oth[d] = oth.get(d, 0.0) + float(l["amount"])
+        monthly = {k: round(v, 2) for k, v in agg.items()}
+        others = sorted(({"descrip": k, "amount": round(v, 2)} for k, v in oth.items()),
+                        key=lambda x: -x["amount"])
+    except Exception:
+        pass                                             # no payroll setup yet — structure still shows
+
+    latest = one("SELECT payyear, paymonth, RTRIM(payperiod) AS pp, "
+                 "SUM(CASE WHEN RTRIM(payitem)='903' THEN tramount ELSE 0 END) AS net "
+                 "FROM paytranh WHERE company=? AND RTRIM(emp_id)=? "
+                 "GROUP BY payyear, paymonth, payperiod "
+                 "ORDER BY payyear DESC, paymonth DESC, payperiod DESC LIMIT 1", m["co"], m["emp"])
+    latest_label = ""
+    if latest:
+        latest_label = (f"{datetime.date(int(latest['payyear']), int(latest['paymonth']), 1):%b %Y}"
+                        f" · {PP_LABEL.get(latest['pp'], latest['pp'])}")
+    return render_template("me_comp.html", me=m, pt=pt, salary=salary, allow=allow_m,
+                           equiv=equiv, total_monthly=round(equiv + allow_m, 2),
+                           annual=annual, monthly=monthly, others=others,
+                           latest=latest, latest_label=latest_label,
+                           month_name=today.strftime("%B %Y"), active="comp")
+
+
 @bp.route("/manifest.json")
 def manifest_json():
     return jsonify({
