@@ -21,7 +21,7 @@ PAYROLL_MENU = [
         ("Employee Data", "e:employees"),
     ]),
     ("Transactions", [
-        ("Rate Change", "s:ratechange"),
+        ("Rate Change", "e:ratechange"),
         ("Department Change", "s:deptchange"),
         ("Job Position Change", "s:jobchange"),
         ("—", ""),
@@ -101,7 +101,7 @@ HR_MENU = [
         ("Company Change", "s:companychg"),
         ("Department Change", "s:deptchange"),
         ("Job Position Change", "s:jobchange"),
-        ("Rate Change", "s:ratechange"),
+        ("Rate Change", "e:ratechange"),
         ("—", ""),
         ("Leaves and Absences", "s:leavetran"),
     ]),

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Salary Change · {{ emp_id }}{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{{ ab.bar(back_url=url_for('ratechange', company=company, emp_id=emp_id, mode=mode),
+          exit_url=url_for('dashboard', mode=mode, company=company)) }}
+{% endblock %}
+
+{% block content %}
+<div class="screen-head">
+  <a class="back" href="{{ url_for('ratechange', company=company, emp_id=emp_id, mode=mode) }}">‹ Rate Change</a>
+  <h1>Salary Change</h1>
+</div>
+
+<section class="panel" style="max-width:760px">
+  {% include "_ratechange_form.html" %}
+</section>
+{% endblock %}

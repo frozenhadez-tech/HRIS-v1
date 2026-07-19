@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Rate Change · HRPayroll L98{% endblock %}
+
+{% block actionbar %}
+{% import "_actionbar.html" as ab with context %}
+{{ ab.bar(back_url=url_for('dashboard', mode=mode, company=company),
+          exit_url=url_for('dashboard', mode=mode, company=company),
+          add_url=(url_for('ratechange_form', company=company, emp_id=emp_id, mode=mode) if emp else ''),
+          add_popout=('Salary Change' if emp else '')) }}
+{% endblock %}
+
+{% block content %}
+<div class="screen-head">
+  <h1>Rate Change</h1>
+  <p class="crumb">Salary history per employee · {{ comp_map.get(company, '') }}</p>
+</div>
+
+<section class="panel lnw">
+  <form class="bar" method="get">
+    <input type="hidden" name="mode" value="{{ mode }}"><input type="hidden" name="company" value="{{ company }}">
+    <label class="fld">Badge No.
+      <input type="text" name="emp_id" value="{{ emp_id }}" maxlength="40" placeholder="number or name"
+             autocomplete="off" autofocus>
+    </label>
+    {% if not emp %}<span class="fld" style="text-transform:none;letter-spacing:0">Enter a badge number, a name, or part of one</span>{% endif %}
+    {% if emp %}<span class="empname">{{ emp.empname }}</span>
+      <span class="fld">Status: <strong style="color:var(--ink);text-transform:none">{{ status or '—' }}</strong></span>
+      {% if cur %}<span class="fld">Current rate: <strong class="mono" style="color:var(--ink)">₱ {{ cur.salary | peso }}</strong>
+        <span style="text-transform:none">/ {{ {'D':'day','M':'month'}.get(cur.paytype, cur.paytype or '—') }}</span></span>{% endif %}{% endif %}
+    <button class="go" type="submit">Retrieve</button>
+  </form>
+
+  {% if matches %}
+    <div class="ln-scroll">
+      <table class="ln">
+        <thead><tr><th></th><th>Badge No.</th><th>Employee</th><th>Status</th></tr></thead>
+        <tbody>
+        {% for m in matches %}
+          {% set open_url = url_for('ratechange', company=company, mode=mode, emp_id=m.emp_id) %}
+          <tr onclick="location.href='{{ open_url }}'" style="cursor:pointer">
+            <td class="idx">{{ loop.index }}.</td>
+            <td class="doc"><a class="edit-lnk" href="{{ open_url }}">{{ m.emp_id }}</a></td>
+            <td>{{ m.empname }}</td>
+            <td><span class="chip {{ m.empsts | tone }}">{{ m.empsts | est }}</span></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="note dim" style="margin-top:12px">{{ matches|length }} employee{{ '' if matches|length==1 else 's' }}
+      match “{{ emp_id }}” — click one to open their salary history.</p>
+  {% elif emp_id and not emp %}
+    <p class="note" style="color:var(--stamp);margin-top:14px">Nothing matches “{{ emp_id }}” in {{ comp_map.get(company,'this company') }} —
+      try a badge number, a surname, or part of a name, or switch company (top-right).</p>
+  {% elif not emp %}
+    <p class="note dim" style="margin-top:14px">Enter a badge number or a name (even part of one) and press <em>Retrieve</em>.</p>
+  {% else %}
+  <div class="ln-scroll">
+  <table class="ln">
+    <thead><tr>
+      <th></th><th>Co.</th><th>Effectivity Date</th>
+      <th class="n">Old Rate</th><th class="n">New Rate</th><th class="n">% Increase</th>
+      <th>Reason</th><th>Logged</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td class="idx">{{ loop.index }}.</td>
+        <td class="doc">{{ r.co }}</td>
+        <td class="d">{{ r.effdate | dt }}</td>
+        <td class="n">{{ r.oldrate | peso }}</td>
+        <td class="n">{{ r.newrate | peso }}</td>
+        <td class="n">{% if r.pct is not none %}{{ '%.2f' % r.pct }}%{% endif %}</td>
+        <td>{{ r.reason }}</td>
+        <td class="dim" style="font-size:11px">{{ r.changeby }}{% if r.changedate %} · {{ r.changedate | dt }}{% endif %}</td>
+        <td class="row-actions">
+          {% if r.co == company %}
+          <form method="post" action="{{ url_for('ratechange_delete', company=company, mode=mode) }}"
+                onsubmit="return confirm('Remove this rate change? The current salary will follow the newest remaining change.')">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+            <input type="hidden" name="emp_id" value="{{ emp_id }}">
+            <input type="hidden" name="effdate" value="{{ r.effdate.isoformat() }}">
+            <button type="submit" class="del-lnk">delete</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty" style="text-align:center;padding:20px">
+        No rate changes recorded for {{ emp_id }} — use <em>Add</em> to enter the first one.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  <div class="ln-meta">
+    <span><strong>{{ rows | length }}</strong> rate change{{ '' if rows|length==1 else 's' }} · every company this badge worked in</span>
+    <span class="rule"></span>
+    <span>Adding the newest change also updates the current salary rate</span>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

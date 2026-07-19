@@ -1,0 +1,52 @@
+{# Salary Change dialog — mirrors the original: effectivity date, OLD vs NEW rate/pay type,
+   reason, change log. Used on its own page and, via ?frag=1, inside the pop-out. #}
+<form class="loanf" method="post" action="{{ url_for('ratechange_form', company=company, mode=mode) }}">
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+  <input type="hidden" name="emp_id" value="{{ emp_id }}">
+
+  <fieldset class="lf-box">
+    <legend>Employee</legend>
+    <div class="lf-emp">
+      <span><b>Badge:</b> <span class="mono">{{ emp_id }}</span> &nbsp; <u>{{ emp.empname }}</u></span>
+      <span><b>Status:</b> <u>{{ status or '—' }}</u></span>
+    </div>
+  </fieldset>
+
+  <fieldset class="lf-box">
+    <legend>Details of salary change</legend>
+    <div class="lf-grid">
+      <label>Effectivity date: <input type="date" name="effdate" value="{{ today }}" required></label>
+      <label></label>
+
+      <label>OLD Rate:
+        <input type="text" class="ro" value="{{ '%.2f' % old_rate }}" readonly title="Current salary rate (payroll)"></label>
+      <label>NEW Rate: <input type="number" step="0.01" min="0" name="newrate" required autofocus></label>
+
+      <label>OLD Pay Type:
+        <input type="text" class="ro" value="{{ {'D':'Daily','M':'Monthly'}.get(old_pt, old_pt) }}" readonly></label>
+      <label>NEW Pay Type:
+        <select name="newpaytype">
+          <option value="M" {{ 'selected' if old_pt != 'D' }}>Monthly</option>
+          <option value="D" {{ 'selected' if old_pt == 'D' }}>Daily</option>
+        </select>
+      </label>
+
+      <label class="lf-wide">Reason: <input type="text" name="reason" maxlength="30" placeholder="e.g. adjustment, regularization"></label>
+      <label>Compute differential pay?:
+        <input type="text" class="ro" value="No" readonly title="Differential pay is not computed by this system"></label>
+    </div>
+  </fieldset>
+
+  <fieldset class="lf-box">
+    <legend>Change Log</legend>
+    <div class="lf-emp">
+      <span><b>Changed by:</b> <span class="mono">{{ session.get('user', {}).get('id', '—') }}</span></span>
+      <span><b>Changed date:</b> <span class="mono">{{ today }}</span></span>
+    </div>
+  </fieldset>
+
+  <div class="lf-actions">
+    <button type="submit" class="btn-save">OK</button>
+    <button type="button" class="btn-cancel" data-popout-close>Cancel</button>
+  </div>
+</form>

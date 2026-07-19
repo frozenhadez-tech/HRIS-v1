@@ -1365,6 +1365,148 @@ def loan_payments():
                            amount=(None if float(ln["loanamt"]) >= FUND_SENTINEL else amount))
 
 
+def _emp_head(company, emp_id):
+    return one("SELECT RTRIM(lastname)||', '||RTRIM(COALESCE(firstname,''))"
+               "||CASE WHEN COALESCE(RTRIM(middlename),'')<>'' THEN ' '||RTRIM(middlename) ELSE '' END AS empname, "
+               "RTRIM(COALESCE(empsts,'')) AS empsts FROM personnel WHERE company=? AND RTRIM(emp_id)=?",
+               company, emp_id)
+
+
+def _current_rate(company, emp_id):
+    return one("SELECT COALESCE(salary,0) AS salary, RTRIM(COALESCE(paytype,'')) AS paytype "
+               "FROM payroll WHERE company=? AND RTRIM(emp_id)=?", company, emp_id)
+
+
+def _set_current_rate(company, emp_id, rate, paytype, user, now):
+    """payroll.salary follows the newest rate change — that's how the original kept them in sync."""
+    if one("SELECT 1 AS x FROM payroll WHERE company=? AND RTRIM(emp_id)=?", company, emp_id):
+        db.execute("UPDATE payroll SET salary=?, paytype=?, changeby=?, changedate=? "
+                   "WHERE company=? AND RTRIM(emp_id)=?", rate, paytype, user, now, company, emp_id)
+    else:
+        db.execute("INSERT INTO payroll (company, emp_id, salary, paytype, changeby, changedate) "
+                   "VALUES (?,?,?,?,?,?)", company, emp_id, rate, paytype, user, now)
+
+
+@app.route("/ratechange")
+def ratechange():
+    """Rate Change — the original's Salary History window: look up an employee, see every
+    rate movement (across companies, as the original did), and add or remove one."""
+    company = sel_company()
+    mode = request.args.get("mode", "PY")
+    emp_id = (request.args.get("emp_id") or "").strip()
+
+    emp = _emp_head(company, emp_id) if emp_id else None
+    matches = []
+    if emp_id and not emp:
+        matches = _emp_search(company, emp_id)
+        if len(matches) == 1:                       # a single hit just opens
+            emp_id = matches[0]["emp_id"]
+            emp, matches = _emp_head(company, emp_id), []
+    status = ""
+    if emp and emp["empsts"]:
+        s = one("SELECT RTRIM(descrip) AS d FROM tablecode1 WHERE tblcode='EST' AND RTRIM(fldcode)=?",
+                emp["empsts"])
+        status = s["d"] if s else emp["empsts"]
+
+    rows, cur = [], None
+    if emp:
+        for r in q("SELECT RTRIM(company) AS co, effdate, COALESCE(oldrate,0) AS oldrate, "
+                   "COALESCE(newrate,0) AS newrate, RTRIM(COALESCE(oldpaytype,'')) AS op, "
+                   "RTRIM(COALESCE(newpaytype,'')) AS np, RTRIM(COALESCE(reason,'')) AS reason, "
+                   "RTRIM(COALESCE(changeby,'')) AS changeby, changedate "
+                   "FROM ratechange WHERE RTRIM(emp_id)=? ORDER BY effdate", emp_id):
+            old, new = float(r["oldrate"]), float(r["newrate"])
+            rows.append({**r, "pct": ((new - old) / old * 100.0) if old else None})
+        cur = _current_rate(company, emp_id)
+    return render_template("ratechange.html", emp=emp, emp_id=emp_id, status=status,
+                           rows=rows, cur=cur, matches=matches)
+
+
+@app.route("/ratechange/form", methods=["GET", "POST"])
+def ratechange_form():
+    """Salary Change — the original's dialog: effectivity date, OLD vs NEW rate and pay type,
+    reason. Saving inserts the ratechange row; if it is the employee's newest change it also
+    updates the current salary in payroll (505 of 507 employees in the legacy data follow
+    exactly that rule). Differential pay is not computed (stored as N, like almost every row)."""
+    company = sel_company()
+    mode = request.values.get("mode", "PY")
+    emp_id = (request.values.get("emp_id") or "").strip()
+    emp = _emp_head(company, emp_id) if emp_id else None
+    if not emp:
+        abort(404)
+    cur = _current_rate(company, emp_id)
+    old_rate = float(cur["salary"]) if cur else 0.0
+    old_pt = (cur["paytype"] if cur else "") or "M"
+
+    if request.method == "POST":
+        errors = []
+        try:
+            effdate = datetime.date.fromisoformat((request.form.get("effdate") or "").strip())
+        except ValueError:
+            effdate = None
+            errors.append("Effectivity date is required.")
+        newrate = _cast(request.form.get("newrate"), "num")
+        if newrate is None or newrate < 0:
+            errors.append("New rate must be a number of 0 or more.")
+        newpt = (request.form.get("newpaytype") or old_pt).strip()[:1] or "M"
+        reason = (request.form.get("reason") or "").strip()[:30]
+        if effdate and one("SELECT 1 AS x FROM ratechange WHERE company=? AND RTRIM(emp_id)=? AND effdate=?",
+                           company, emp_id, effdate):
+            errors.append(f"A rate change effective {effdate} already exists for {emp_id} — "
+                          "delete it first if it was a mistake.")
+        if errors:
+            if request.form.get("frag"):
+                return (" ".join(errors), 422)
+            for e in errors:
+                flash(e, "error")
+            return redirect(url_for("ratechange", company=company, emp_id=emp_id, mode=mode))
+
+        user, now = session.get("user", {}).get("id", ""), datetime.datetime.now()
+        prev = one("SELECT MAX(effdate) AS m FROM ratechange WHERE company=? AND RTRIM(emp_id)=?",
+                   company, emp_id)
+        is_newest = prev["m"] is None or effdate >= prev["m"].date()
+        db.execute("INSERT INTO ratechange (company, emp_id, effdate, oldrate, newrate, "
+                   "oldpaytype, newpaytype, reason, diffpay, changeby, changedate) "
+                   "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                   company, emp_id, effdate, old_rate, newrate, old_pt, newpt, reason, "N", user, now)
+        if is_newest:
+            _set_current_rate(company, emp_id, newrate, newpt, user, now)
+        flash(f"Rate change added for {emp_id}: {old_rate:,.2f} → {float(newrate):,.2f} "
+              f"effective {effdate}.", "ok")
+        if request.form.get("frag"):
+            return ("", 204)                        # pop-out: the page just reloads the list
+        return redirect(url_for("ratechange", company=company, emp_id=emp_id, mode=mode))
+
+    st = one("SELECT RTRIM(descrip) AS d FROM tablecode1 WHERE tblcode='EST' AND RTRIM(fldcode)=?",
+             emp["empsts"]) if emp["empsts"] else None
+    tpl = "_ratechange_form.html" if request.args.get("frag") else "ratechange_form.html"
+    return render_template(tpl, emp=emp, emp_id=emp_id, status=(st["d"] if st else emp["empsts"]),
+                           old_rate=old_rate, old_pt=old_pt,
+                           today=datetime.date.today().isoformat())
+
+
+@app.route("/ratechange/delete", methods=["POST"])
+def ratechange_delete():
+    """Remove a mistaken rate-change row, then point payroll.salary back at whatever
+    change is newest for this company (if any remain)."""
+    company = sel_company()
+    mode = request.args.get("mode", "PY")
+    emp_id = (request.form.get("emp_id") or "").strip()
+    effdate = (request.form.get("effdate") or "").strip()
+    if not emp_id or not effdate:
+        abort(400)
+    db.execute("DELETE FROM ratechange WHERE company=? AND RTRIM(emp_id)=? AND effdate=?",
+               company, emp_id, effdate)
+    user, now = session.get("user", {}).get("id", ""), datetime.datetime.now()
+    latest = one("SELECT COALESCE(newrate,0) AS newrate, RTRIM(COALESCE(newpaytype,'M')) AS np "
+                 "FROM ratechange WHERE company=? AND RTRIM(emp_id)=? "
+                 "ORDER BY effdate DESC LIMIT 1", company, emp_id)
+    if latest:
+        _set_current_rate(company, emp_id, latest["newrate"], latest["np"] or "M", user, now)
+    flash(f"Rate change removed for {emp_id}.", "ok")
+    return redirect(url_for("ratechange", company=company, emp_id=emp_id, mode=mode))
+
+
 @app.route("/engine/verify")
 def engine_verify():
     company = sel_company()
