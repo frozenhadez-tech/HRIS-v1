@@ -123,7 +123,7 @@ def index():
     tc = one("SELECT tlhours, reghrs, tardy, undertime, nphrs FROM timecard "
              "WHERE company=? AND emp_id=? AND trdate=?", m["co"], m["emp"], day.isoformat())
     return render_template("me_clock.html", me=m, now=now, day=day, next_kind=next_kind,
-                           punches=punches, sch=sch, tc=tc)
+                           punches=punches, sch=sch, tc=tc, active="clock")
 
 
 @bp.route("/punch", methods=["POST"])
@@ -177,7 +177,109 @@ def attendance():
     prev = (first - datetime.timedelta(days=1)).strftime("%Y-%m")
     nxtm = nxt.strftime("%Y-%m") if nxt <= today else None
     return render_template("me_att.html", me=m, rows=rows, first=first, tot=tot,
-                           prev=prev, nxt=nxtm)
+                           prev=prev, nxt=nxtm, active="att")
+
+
+CONTACT_FIELDS = [("cellphone", "Cellphone"), ("telno", "Telephone"), ("address", "Address"),
+                  ("barangay", "Barangay"), ("addrcity", "City / Town"), ("addrprov", "Province"),
+                  ("zipcode", "Zip"), ("contactper", "Emergency contact"),
+                  ("contactrel", "Relationship"), ("contacttel", "Contact tel.")]
+_WIDTHS: dict = {}
+
+
+def _contact_widths():
+    if not _WIDTHS:
+        for r in q("SELECT column_name AS c, character_maximum_length AS n FROM information_schema.columns "
+                   "WHERE table_name='personnel' AND character_maximum_length IS NOT NULL"):
+            _WIDTHS[r["c"]] = int(r["n"])
+    return _WIDTHS
+
+
+def _profile_row(company, emp_id):
+    return one(
+        "SELECT RTRIM(p.emp_id) AS emp_id, RTRIM(COALESCE(p.firstname,'')) AS fn, "
+        "RTRIM(COALESCE(p.middlename,'')) AS mn, RTRIM(p.lastname) AS ln, "
+        "RTRIM(COALESCE(j.descrip,'')) AS job, RTRIM(COALESCE(d.descrip,'')) AS dept, "
+        "RTRIM(COALESCE(p.empsts,'')) AS sts, p.datehired, p.datereg, "
+        "RTRIM(COALESCE(p.cellphone,'')) AS cellphone, RTRIM(COALESCE(p.telno,'')) AS telno, "
+        "RTRIM(COALESCE(p.address,'')) AS address, RTRIM(COALESCE(p.barangay,'')) AS barangay, "
+        "RTRIM(COALESCE(p.addrcity,'')) AS addrcity, RTRIM(COALESCE(p.addrprov,'')) AS addrprov, "
+        "RTRIM(COALESCE(p.zipcode,'')) AS zipcode, RTRIM(COALESCE(p.sssno,'')) AS sssno, "
+        "RTRIM(COALESCE(p.tin,'')) AS tin, RTRIM(COALESCE(p.phealthno,'')) AS phealthno, "
+        "RTRIM(COALESCE(p.hdmfno,'')) AS hdmfno, RTRIM(COALESCE(p.contactper,'')) AS contactper, "
+        "RTRIM(COALESCE(p.contactrel,'')) AS contactrel, RTRIM(COALESCE(p.contacttel,'')) AS contacttel, "
+        "(p.emppic IS NOT NULL) AS has_pic "
+        "FROM personnel p "
+        "LEFT JOIN jobcode j ON j.company=p.company AND j.code=p.jobcode "
+        "LEFT JOIN department d ON d.company=p.company AND d.code=p.dept "
+        "WHERE p.company=? AND RTRIM(p.emp_id)=?", company, emp_id)
+
+
+@bp.route("/profile")
+def profile():
+    m = session["me"]
+    p = _profile_row(m["co"], m["emp"])
+    if not p:
+        abort(404)
+    sts = one("SELECT RTRIM(descrip) AS d FROM tablecode1 WHERE tblcode='EST' AND RTRIM(fldcode)=?", p["sts"])
+    rel = one("SELECT RTRIM(descrip) AS d FROM tablecode1 WHERE tblcode='REL' AND RTRIM(fldcode)=?",
+              p["contactrel"]) if p["contactrel"] else None
+    fullname = " ".join(x for x in (p["fn"], p["mn"], p["ln"]) if x)
+    initials = ((p["fn"][:1] or "") + (p["ln"][:1] or "")).upper() or p["emp_id"][:2]
+    addr = ", ".join(x for x in (p["address"], p["barangay"], p["addrcity"], p["addrprov"]) if x)
+    if p["zipcode"]:
+        addr = (addr + " " + p["zipcode"]).strip()
+    comp = one("SELECT RTRIM(companynam) AS n FROM company WHERE RTRIM(company)=?", m["co"])
+    return render_template("me_profile.html", me=m, p=p, fullname=fullname, initials=initials,
+                           status=(sts["d"] if sts else p["sts"]), addr=addr,
+                           rel=(rel["d"] if rel else p["contactrel"]),
+                           compname=(comp["n"] if comp else m["co"]), active="profile")
+
+
+@bp.route("/photo")
+def photo():
+    m = session["me"]
+    r = one("SELECT emppic, RTRIM(COALESCE(emppicext,'jpg')) AS ext FROM personnel "
+            "WHERE company=? AND RTRIM(emp_id)=?", m["co"], m["emp"])
+    if not r or not r["emppic"]:
+        abort(404)
+    mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+            "bmp": "image/bmp", "gif": "image/gif"}.get(r["ext"].lower(), "application/octet-stream")
+    return Response(bytes(r["emppic"]), mimetype=mime,
+                    headers={"Cache-Control": "private, max-age=3600"})
+
+
+@bp.route("/profile/edit", methods=["GET", "POST"])
+def profile_edit():
+    """Self-service for the employee's own contact details — nothing else is editable here."""
+    m = session["me"]
+    p = _profile_row(m["co"], m["emp"])
+    if not p:
+        abort(404)
+    error = None
+    if request.method == "POST":
+        w = _contact_widths()
+        vals, errs = {}, []
+        for f, label in CONTACT_FIELDS:
+            v = (request.form.get(f) or "").strip()
+            if f in w and len(v) > w[f]:
+                errs.append(f"{label} is too long (max {w[f]} characters).")
+            vals[f] = v
+        if errs:
+            error = " ".join(errs)
+        else:
+            sets = ",".join(f"{f}=?" for f, _ in CONTACT_FIELDS)
+            execute(f"UPDATE personnel SET {sets},changeby=?,changedate=? "
+                    "WHERE company=? AND RTRIM(emp_id)=?",
+                    *[vals[f] for f, _ in CONTACT_FIELDS], m["emp"],
+                    datetime.datetime.now(), m["co"], m["emp"])
+            flash("Contact details updated.", "ok")
+            return redirect(url_for("me.profile"))
+    rels = q("SELECT RTRIM(fldcode) AS code, RTRIM(descrip) AS descrip FROM tablecode1 "
+             "WHERE tblcode='REL' AND RTRIM(fldcode)<>'' ORDER BY descrip")
+    f = request.form if request.method == "POST" else p
+    return render_template("me_profile_edit.html", me=m, f=f, rels=rels, error=error,
+                           widths=_contact_widths(), active="profile")
 
 
 @bp.route("/manifest.json")

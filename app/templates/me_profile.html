@@ -1,0 +1,65 @@
+{% extends "me_base.html" %}
+{% block title %}My Profile{% endblock %}
+{% block content %}
+<header class="topbar">
+  <div><strong>My Profile</strong><span class="mono dim">{{ me.emp }} · Co {{ me.co }}</span></div>
+  <a class="lnk" href="{{ url_for('me.logout') }}">Sign out</a>
+</header>
+
+<section class="card profhead">
+  {% if p.has_pic %}
+  <img class="avatar" src="{{ url_for('me.photo') }}" alt="">
+  {% else %}
+  <div class="avatar initials">{{ initials }}</div>
+  {% endif %}
+  <h1>{{ fullname }}</h1>
+  {% if p.job %}<p class="job">{{ p.job }}</p>{% endif %}
+  <span class="stschip {{ 'off' if p.sts == 'X' }}">{{ status or '—' }}</span>
+  <a class="editbtn" href="{{ url_for('me.profile_edit') }}">✎ Edit contact details</a>
+</section>
+
+<section class="card">
+  <h2>Employee Overview</h2>
+  <div class="kv2">
+    <div><span class="k">Employee ID</span><span class="v mono">{{ p.emp_id }}</span></div>
+    <div><span class="k">Department</span><span class="v">{{ p.dept or '—' }}</span></div>
+    <div><span class="k">Date Hired</span><span class="v">{{ p.datehired.strftime('%b %d, %Y') if p.datehired else '—' }}</span></div>
+    <div><span class="k">Regularized</span><span class="v">{{ p.datereg.strftime('%b %d, %Y') if p.datereg else '—' }}</span></div>
+    <div><span class="k">Company</span><span class="v">{{ compname }}</span></div>
+    <div><span class="k">Status</span><span class="v">{{ status or '—' }}</span></div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Contact Information</h2>
+  <div class="kv1">
+    <div><span class="k">Cellphone</span><span class="v mono">{{ p.cellphone or '—' }}</span></div>
+    <div><span class="k">Telephone</span><span class="v mono">{{ p.telno or '—' }}</span></div>
+    <div><span class="k">Address</span><span class="v">{{ addr or '—' }}</span></div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Government IDs</h2>
+  <div class="kv2">
+    <div><span class="k">SSS No.</span><span class="v mono">{{ p.sssno or '—' }}</span></div>
+    <div><span class="k">TIN</span><span class="v mono">{{ p.tin or '—' }}</span></div>
+    <div><span class="k">PhilHealth</span><span class="v mono">{{ p.phealthno or '—' }}</span></div>
+    <div><span class="k">Pag-IBIG</span><span class="v mono">{{ p.hdmfno or '—' }}</span></div>
+  </div>
+  <p class="hint">Something wrong here? Only HR can correct these — visit them with your ID card.</p>
+</section>
+
+<section class="card">
+  <h2>Emergency Contact</h2>
+  <div class="kv1">
+    <div><span class="k">Person</span><span class="v">{{ p.contactper or '—' }}</span></div>
+    <div><span class="k">Relationship</span><span class="v">{{ rel or '—' }}</span></div>
+    <div><span class="k">Contact No.</span><span class="v mono">{{ p.contacttel or '—' }}</span></div>
+  </div>
+</section>
+
+<p class="hint" style="text-align:center"><a class="lnk" href="{{ url_for('me.pin') }}">Change PIN</a></p>
+
+{% include "_me_nav.html" %}
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends "me_base.html" %}
+{% block title %}Edit Contact Details{% endblock %}
+{% block content %}
+<header class="topbar">
+  <div><strong>Edit Contact Details</strong><span class="mono dim">{{ me.emp }} · Co {{ me.co }}</span></div>
+  <a class="lnk" href="{{ url_for('me.profile') }}">‹ Profile</a>
+</header>
+
+<form method="post" class="card form">
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+  <label>Cellphone<input type="tel" name="cellphone" value="{{ f.get('cellphone','') }}" maxlength="{{ widths.get('cellphone', 20) }}"></label>
+  <label>Telephone<input type="tel" name="telno" value="{{ f.get('telno','') }}" maxlength="{{ widths.get('telno', 20) }}"></label>
+  <label>Address<input type="text" name="address" value="{{ f.get('address','') }}" maxlength="{{ widths.get('address', 60) }}"></label>
+  <label>Barangay<input type="text" name="barangay" value="{{ f.get('barangay','') }}" maxlength="{{ widths.get('barangay', 30) }}"></label>
+  <label>City / Town<input type="text" name="addrcity" value="{{ f.get('addrcity','') }}" maxlength="{{ widths.get('addrcity', 30) }}"></label>
+  <label>Province<input type="text" name="addrprov" value="{{ f.get('addrprov','') }}" maxlength="{{ widths.get('addrprov', 30) }}"></label>
+  <label>Zip<input type="text" name="zipcode" value="{{ f.get('zipcode','') }}" maxlength="{{ widths.get('zipcode', 6) }}" inputmode="numeric"></label>
+  <label>Emergency contact person<input type="text" name="contactper" value="{{ f.get('contactper','') }}" maxlength="{{ widths.get('contactper', 30) }}"></label>
+  <label>Relationship
+    <select name="contactrel">
+      <option value="">—</option>
+      {% set known = rels | map(attribute='code') | list %}
+      {% if f.get('contactrel') and f.get('contactrel') not in known %}
+      <option value="{{ f.get('contactrel') }}" selected>{{ f.get('contactrel') }} (as recorded)</option>{% endif %}
+      {% for o in rels %}<option value="{{ o.code }}" {{ 'selected' if f.get('contactrel')==o.code }}>{{ o.descrip }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Emergency contact no.<input type="tel" name="contacttel" value="{{ f.get('contacttel','') }}" maxlength="{{ widths.get('contacttel', 20) }}"></label>
+  {% if error %}<p class="err">{{ error }}</p>{% endif %}
+  <button type="submit" class="big">Save</button>
+  <p class="hint">Name, position and government IDs can only be changed by HR.</p>
+</form>
+
+{% include "_me_nav.html" %}
+{% endblock %}

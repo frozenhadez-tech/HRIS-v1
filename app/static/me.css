@@ -73,3 +73,33 @@ table.att tr.off td { color: var(--ink-soft); opacity: .65; }
   background: var(--paper-deep); border: 1px solid var(--line); }
 .flash.ok { border-color: var(--go); color: var(--go); }
 .flash.error { border-color: var(--stamp); color: var(--stamp); }
+
+/* profile */
+.profhead { text-align: center; }
+.avatar { width: 92px; height: 92px; border-radius: 50%; object-fit: cover;
+  border: 2px solid var(--line); background: var(--paper-deep); }
+.avatar.initials { display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--serif); font-weight: 900; font-size: 34px; color: var(--ink-soft); }
+.profhead h1 { font-family: var(--serif); font-weight: 900; font-size: 24px; margin: 10px 0 2px; }
+.profhead .job { margin: 0 0 8px; color: var(--ink-soft); font-size: 14px; }
+.stschip { display: inline-block; background: var(--go); color: var(--paper); border-radius: 6px;
+  padding: 3px 14px; font-size: 12.5px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+.stschip.off { background: var(--stamp); }
+.editbtn { display: block; margin-top: 14px; padding: 12px; background: var(--ink); color: var(--paper);
+  border-radius: 8px; font-weight: 700; font-family: var(--serif); text-decoration: none; font-size: 15px; }
+.kv1 div, .kv2 div { padding: 7px 0; border-bottom: 1px dashed var(--line); }
+.kv1 div:last-child, .kv2 div:nth-last-child(-n+2) { border-bottom: 0; }
+.kv2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+.k { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px;
+  color: var(--ink-soft); }
+.v { display: block; font-size: 14.5px; font-weight: 600; overflow-wrap: anywhere; }
+
+/* bottom tab bar */
+body { padding-bottom: 66px; }
+.tabbar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; z-index: 10;
+  background: #fffdf6; border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom); }
+.tabbar a { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 8px 0 7px; font-size: 11px; font-weight: 600; color: var(--ink-soft); text-decoration: none; }
+.tabbar a.on { color: var(--ink); }
+.tabbar a.on svg { stroke-width: 2.6; }

@@ -45,10 +45,7 @@
   {% endif %}
 </section>
 
-<nav class="navrow">
-  <a class="lnk" href="{{ url_for('me.attendance') }}">My Attendance ›</a>
-  <a class="lnk" href="{{ url_for('me.pin') }}">Change PIN</a>
-</nav>
+{% include "_me_nav.html" %}
 {% endblock %}
 
 {% block scripts %}
