@@ -198,7 +198,9 @@ def tone(v):
 
 def sel_company():
     allowed = allowed_companies() if session.get("user") else list(LOOKUPS["comp"])
-    c = (request.args.get("company") or "").strip()
+    # query param first, then the route's path segment (e.g. /employee/<company>/<emp_id>)
+    # so opening a record doesn't silently flip the header back to the default company
+    c = (request.args.get("company") or (request.view_args or {}).get("company") or "").strip()
     if c not in allowed:
         c = allowed[0] if allowed else ""
     return c
