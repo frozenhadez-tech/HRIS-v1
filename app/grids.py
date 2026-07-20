@@ -358,6 +358,7 @@ GRIDS = {
 # ── editable reference tables: {grid key: {table, pk, fields[(col,label,type)]}} ──
 # type: text | num | int | date.  company-scoped grids inject company from the selector.
 # admin: True → only class-Q sign-ins may modify.  add_only: True → no edit/delete.
+# opts: {col: [(value, label), …]} → the form renders a dropdown instead of a text box.
 EDITABLE = {
     "payitem": {"table": "payitem", "pk": ["company", "payitem"], "fields": [
         ("payitem", "Item code", "text"), ("descrip", "Description", "text"),
@@ -410,9 +411,11 @@ EDITABLE = {
         ("maxmorate", "Max monthly rate", "num")]},
     # staff sign-ins: global (no company), stamps change_date only; creating one seeds a
     # generated password (shown once in the flash) and rows get a reset-password action
-    "users": {"table": "users", "pk": ["user_id"], "stamps": [("change_date", "now")], "fields": [
+    "users": {"table": "users", "pk": ["user_id"], "stamps": [("change_date", "now")],
+              "opts": {"class": [("", "— select —"), ("Q", "Q — Administrator"), ("U", "U — Regular user")]},
+              "fields": [
         ("user_id", "User ID", "text"), ("user_name", "Full name", "text"),
-        ("class", "Class (Q/U)", "text"), ("emp_id", "Badge / Emp No", "text")]},
+        ("class", "Class", "text"), ("emp_id", "Badge / Emp No", "text")]},
 }
 for _k, _meta in EDITABLE.items():
     if _k in GRIDS:

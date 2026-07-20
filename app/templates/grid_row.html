@@ -26,7 +26,13 @@
       {% for col, label, typ in e.fields %}
       {% set ro = editing and col in e.pk %}
       <label class="{{ 'req' if (col in e.pk and not editing) }}">{{ label }}
-        {% if typ == 'date' %}
+        {% if e.opts and col in e.opts %}
+          <select name="{{ col }}" {% if ro %}disabled class="ro"{% endif %}>
+            {% for val, text in e.opts[col] %}
+            <option value="{{ val }}" {{ 'selected' if (f.get(col,'') | string) == val }}>{{ text }}</option>
+            {% endfor %}
+          </select>
+        {% elif typ == 'date' %}
           <input type="date" name="{{ col }}" value="{{ f.get(col,'') }}" {% if ro %}readonly class="ro"{% endif %}>
         {% elif typ in ('num','int') %}
           <input type="number" step="{{ '1' if typ == 'int' else 'any' }}" name="{{ col }}" value="{{ f.get(col,'') }}" {% if ro %}readonly class="ro"{% endif %}>
