@@ -118,6 +118,9 @@ tr.selectable.sel td { background: var(--hl) !important; box-shadow: inset 3px 0
 .form-grid input, .form-grid select { font-family: var(--sans); font-size: 13.5px; color: var(--ink); background: #fffdf6; border: 1px solid var(--line-strong); padding: 7px 10px; }
 .form-grid input:focus, .form-grid select:focus { outline: 2px solid var(--brass); outline-offset: -1px; }
 .form-grid input.ro { background: var(--paper-deep); color: var(--ink-soft); border-style: dashed; }
+.chk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 20px; }
+.chk-grid label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); cursor: pointer; }
+.chk-grid input { accent-color: var(--green); width: 15px; height: 15px; }
 .form-actions { display: flex; align-items: center; gap: 14px; margin: 4px 0 30px; }
 .btn-save { font-family: var(--serif); font-weight: 700; font-size: 15px; color: var(--paper); background: var(--green); border: 1px solid var(--green); box-shadow: 3px 3px 0 var(--brass); padding: 10px 26px; cursor: pointer; }
 .btn-save:hover { filter: brightness(1.08); }

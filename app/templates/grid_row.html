@@ -44,6 +44,19 @@
     </div>
   </section>
 
+  {% if grant_choices %}
+  <section class="panel">
+    <p class="note" style="margin:0 0 10px">Company access — tick the companies this sign-in can open.
+      Super users (class S) always see every company.</p>
+    <div class="chk-grid">
+      {% for c in grant_choices %}
+      <label><input type="checkbox" name="companies" value="{{ c.company }}"
+             {{ 'checked' if c.company in grants }}> <span class="mono">{{ c.company }}</span>&nbsp;· {{ c.companynam }}</label>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
   <div class="form-actions">
     <button type="submit" class="btn-save">{{ 'Save changes' if editing else 'Add record' }}</button>
     <a class="btn-cancel" href="{{ url_for('screen', key=key, mode=mode, company=company) }}">Cancel</a>

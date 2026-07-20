@@ -48,16 +48,40 @@ def login_required(view):
     return wrapped
 
 
-def is_admin() -> bool:
-    """Class-Q sign-ins (the legacy power-user class) — gates restricted maintenance."""
+def _user_cls() -> str:
+    """Signed-in user's class letter (S super, Q admin, U regular)."""
     u = session.get("user")
     if not u:
-        return False
+        return ""
     if "cls" not in u:  # session predates class capture at sign-in — backfill once
         row = one("SELECT RTRIM(COALESCE(class,'')) AS cls FROM users WHERE RTRIM(user_id)=?", u["id"])
         u["cls"] = ((row["cls"] if row else "") or "").strip().upper()
         session.modified = True
-    return u["cls"] == "Q"
+    return u["cls"]
+
+
+def is_admin() -> bool:
+    """Class Q and S sign-ins — gates restricted maintenance (users, company master)."""
+    return _user_cls() in ("Q", "S")
+
+
+def is_super() -> bool:
+    return _user_cls() == "S"
+
+
+def allowed_companies() -> list:
+    """Company codes this sign-in may open — compusers grants; class S sees all."""
+    from flask import g as ctx
+    if not session.get("user"):
+        return []
+    if getattr(ctx, "allowed_cos", None) is None:
+        if is_super():
+            ctx.allowed_cos = [c["company"] for c in LOOKUPS["companies"]]
+        else:
+            got = {r["c"] for r in q("SELECT RTRIM(company) AS c FROM compusers WHERE RTRIM(user_id)=?",
+                                     session["user"]["id"])}
+            ctx.allowed_cos = [c["company"] for c in LOOKUPS["companies"] if c["company"] in got]
+    return ctx.allowed_cos
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -90,6 +114,17 @@ def guard():
         return
     if not session.get("user"):
         return redirect(url_for("login", next=request.full_path))
+    # company-access wall: any company named in the request must be granted to this sign-in
+    cands = set()
+    if request.view_args and request.view_args.get("company"):
+        cands.add(str(request.view_args["company"]).strip())
+    if request.args.get("company"):
+        cands.add(request.args["company"].strip())
+    if request.method == "POST" and request.form.get("company"):
+        cands.add(request.form["company"].strip())
+    real = {c for c in cands if c in LOOKUPS["comp"]}
+    if real and not real <= set(allowed_companies()):
+        abort(403)
 
 
 import me as me_portal  # noqa: E402  (imports db/attendance_engine only — no cycle)
@@ -157,9 +192,10 @@ def tone(v):
 
 
 def sel_company():
-    c = (request.args.get("company") or "001").strip()
-    if c not in LOOKUPS["comp"]:
-        c = "001"
+    allowed = allowed_companies() if session.get("user") else list(LOOKUPS["comp"])
+    c = (request.args.get("company") or "").strip()
+    if c not in allowed:
+        c = allowed[0] if allowed else ""
     return c
 
 
@@ -167,8 +203,13 @@ def sel_company():
 def inject():
     from menus import PAYROLL_MENU, HR_MENU
     mode = request.args.get("mode", "PY")
+    if session.get("user"):
+        allowed = set(allowed_companies())
+        comps = [c for c in LOOKUPS["companies"] if c["company"] in allowed]
+    else:
+        comps = LOOKUPS["companies"]
     return {
-        "companies": LOOKUPS["companies"], "comp_map": LOOKUPS["comp"],
+        "companies": comps, "comp_map": LOOKUPS["comp"],
         "PAYROLL_MENU": PAYROLL_MENU, "HR_MENU": HR_MENU,
         "mode": mode, "company": sel_company(),
         "csrf_token": csrf_token, "is_admin": is_admin,
@@ -220,6 +261,15 @@ def _cast(v, typ):
     return v  # text / date (ISO string; Postgres casts)
 
 
+def _save_user_grants(uid: str, by: str) -> None:
+    """Rewrite a sign-in's compusers rows from the form's company checkboxes."""
+    codes = [c for c in request.form.getlist("companies") if c in LOOKUPS["comp"]]
+    db.execute("DELETE FROM compusers WHERE RTRIM(user_id)=?", uid)
+    for c in codes:
+        db.execute("INSERT INTO compusers (company, user_id, changeby, changedate) VALUES (?,?,?,?)",
+                   c, uid, by, datetime.datetime.now())
+
+
 @app.route("/s/<key>/row", methods=["GET", "POST"])
 def grid_row(key):
     g = GRIDS.get(key)
@@ -246,6 +296,8 @@ def grid_row(key):
             sets = ", ".join(f"{c}=?" for c in setcols + [s for s, _ in stamps])
             svals = [data[c] for c in setcols] + svals_stamp
             db.execute(f"UPDATE {e['table']} SET {sets} WHERE {where}", *(svals + wvals))
+            if e["table"] == "users":
+                _save_user_grants((request.form.get("pk_user_id") or "").strip().upper(), user)
             flash("Record updated.", "ok")
         else:
             cols = [c for c, _, _ in e["fields"]]
@@ -265,8 +317,13 @@ def grid_row(key):
             ph = ",".join("?" for _ in cols)
             try:
                 db.execute(f"INSERT INTO {e['table']} ({','.join(cols)}) VALUES ({ph})", *vals)
+                if e["table"] == "users":
+                    _save_user_grants(data["user_id"], user)
                 if e["table"] == "company":
                     load_lookups()  # header company selector caches at startup
+                    if not is_super():  # creator keeps access to the company they just made
+                        db.execute("INSERT INTO compusers (company, user_id, changeby, changedate) "
+                                   "VALUES (?,?,?,?)", data["company"], user, user, datetime.datetime.now())
                 if newpw:
                     flash(f"User {data.get('user_id')} created — initial password: {newpw} "
                           "(shown this once; hand it over securely).", "ok")
@@ -286,7 +343,16 @@ def grid_row(key):
                 v = row.get(c)
                 f[c] = v.strftime("%Y-%m-%d") if (t == "date" and v) else ("" if v is None else (v.strip() if isinstance(v, str) else v))
             f["_pk"] = {c: (company if c == "company" else request.args.get("pk_" + c)) for c in e["pk"]}
-    return render_template("grid_row.html", g=g, e=e, key=key, f=f, editing=editing)
+    grant_choices, grants = None, set()
+    if e["table"] == "users":
+        grant_choices = LOOKUPS["companies"]
+        if editing:
+            grants = {r["c"] for r in q("SELECT RTRIM(company) AS c FROM compusers WHERE RTRIM(user_id)=?",
+                                        (request.args.get("pk_user_id") or "").strip().upper())}
+        else:  # new sign-ins start with every company ticked; untick to restrict
+            grants = {c["company"] for c in LOOKUPS["companies"]}
+    return render_template("grid_row.html", g=g, e=e, key=key, f=f, editing=editing,
+                           grant_choices=grant_choices, grants=grants)
 
 
 @app.route("/s/<key>/delete", methods=["POST"])
@@ -306,6 +372,9 @@ def grid_delete(key):
         flash("You can't remove your own account while signed in with it.", "error")
     else:
         db.execute(f"DELETE FROM {e['table']} WHERE {where}", *wvals)
+        if e["table"] == "users":  # drop the sign-in's company grants with it
+            db.execute("DELETE FROM compusers WHERE RTRIM(user_id)=?",
+                       (request.form.get("pk_user_id") or "").strip().upper())
         flash("Record deleted.", "ok")
     return redirect(url_for("screen", key=key, mode=request.args.get("mode", "PY"), company=company))
 
@@ -313,6 +382,8 @@ def grid_delete(key):
 @app.route("/s/users/resetpw", methods=["POST"])
 def users_resetpw():
     """Issue a fresh sign-in password for a staff account (hashes are unrecoverable)."""
+    if not is_admin():
+        abort(403)
     uid = (request.form.get("pk_user_id") or "").strip().upper()
     if not uid or not one("SELECT 1 AS x FROM users WHERE RTRIM(user_id)=?", uid):
         abort(404)

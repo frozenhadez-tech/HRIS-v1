@@ -86,14 +86,18 @@ GRIDS = {
                  ("acctformat", "Acct Format", "m")],
     },
     "users": {
-        "title": "Users", "subtitle": "Application accounts — create, edit, reset passwords, remove",
+        "title": "Users", "subtitle": "Application accounts — admins manage sign-ins and company access",
         "sql": "SELECT RTRIM(u.user_id) AS user_id, RTRIM(COALESCE(u.user_name,'')) AS user_name, RTRIM(COALESCE(u.class,'')) AS class, "
+               "CASE WHEN RTRIM(COALESCE(u.class,''))='S' THEN 'All' "
+               "ELSE COALESCE((SELECT string_agg(RTRIM(cu.company), ', ' ORDER BY cu.company) "
+               "FROM compusers cu JOIN company co ON co.company=cu.company "
+               "WHERE RTRIM(cu.user_id)=RTRIM(u.user_id)), '—') END AS companies, "
                "CASE WHEN u.disabled IS NULL THEN 'Active' ELSE 'Disabled' END AS state, "
                "u.lastsignon, RTRIM(COALESCE(u.emp_id,'')) AS emp_id "
                "FROM users u ORDER BY u.user_id",
         "cols": [("user_id", "User ID", "m"), ("user_name", "Name", ""), ("class", "Class", "c"),
-                 ("state", "State", "c"), ("lastsignon", "Last Sign-on", "d"),
-                 ("emp_id", "Emp No", "m")],
+                 ("companies", "Companies", "m"), ("state", "State", "c"),
+                 ("lastsignon", "Last Sign-on", "d"), ("emp_id", "Emp No", "m")],
     },
     # ── Org structure ──────────────────────────────────────────────────────
     "jobcode": {
@@ -410,9 +414,11 @@ EDITABLE = {
         ("hourspday", "Hours / day", "num"), ("maxdlyrate", "Max daily rate", "num"),
         ("maxmorate", "Max monthly rate", "num")]},
     # staff sign-ins: global (no company), stamps change_date only; creating one seeds a
-    # generated password (shown once in the flash) and rows get a reset-password action
-    "users": {"table": "users", "pk": ["user_id"], "stamps": [("change_date", "now")],
-              "opts": {"class": [("", "— select —"), ("Q", "Q — Administrator"), ("U", "U — Regular user")]},
+    # generated password (shown once in the flash) and rows get a reset-password action.
+    # class S bypasses compusers; Q/U see only the companies ticked on the form.
+    "users": {"table": "users", "pk": ["user_id"], "stamps": [("change_date", "now")], "admin": True,
+              "opts": {"class": [("", "— select —"), ("S", "S — Super user (all companies)"),
+                                 ("Q", "Q — Administrator"), ("U", "U — Regular user")]},
               "fields": [
         ("user_id", "User ID", "text"), ("user_name", "Full name", "text"),
         ("class", "Class", "text"), ("emp_id", "Badge / Emp No", "text")]},
