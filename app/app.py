@@ -48,6 +48,18 @@ def login_required(view):
     return wrapped
 
 
+def is_admin() -> bool:
+    """Class-Q sign-ins (the legacy power-user class) — gates restricted maintenance."""
+    u = session.get("user")
+    if not u:
+        return False
+    if "cls" not in u:  # session predates class capture at sign-in — backfill once
+        row = one("SELECT RTRIM(COALESCE(class,'')) AS cls FROM users WHERE RTRIM(user_id)=?", u["id"])
+        u["cls"] = ((row["cls"] if row else "") or "").strip().upper()
+        session.modified = True
+    return u["cls"] == "Q"
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     error = None
@@ -56,7 +68,8 @@ def login():
         pwd = request.form.get("password") or ""
         u = auth.verify(uid, pwd)
         if u:
-            session["user"] = {"id": u["user_id"], "name": u["user_name"]}
+            session["user"] = {"id": u["user_id"], "name": u["user_name"],
+                               "cls": (u.get("cls") or "").strip().upper()}
             dest = request.args.get("next") or url_for("dashboard")
             return redirect(dest)
         error = "Invalid user ID or password."
@@ -158,7 +171,7 @@ def inject():
         "companies": LOOKUPS["companies"], "comp_map": LOOKUPS["comp"],
         "PAYROLL_MENU": PAYROLL_MENU, "HR_MENU": HR_MENU,
         "mode": mode, "company": sel_company(),
-        "csrf_token": csrf_token,
+        "csrf_token": csrf_token, "is_admin": is_admin,
     }
 
 
@@ -213,6 +226,8 @@ def grid_row(key):
     if not g or not g.get("edit"):
         abort(404)
     e, company = g["edit"], sel_company()
+    if e.get("admin") and not is_admin():
+        abort(403)
     scoped = bool(g.get("company"))
     user = session.get("user", {}).get("id", "")
     # stamp columns vary: legacy tables carry changeby/changedate, users only change_date
@@ -223,6 +238,8 @@ def grid_row(key):
             data["user_id"] = str(data["user_id"]).strip().upper()
         svals_stamp = [user if kind == "user" else datetime.datetime.now() for _, kind in stamps]
         if request.form.get("_update") == "1":
+            if e.get("add_only"):
+                abort(403)
             where = " AND ".join(f"{c}=?" for c in e["pk"])
             wvals = [company if c == "company" else request.form.get("pk_" + c) for c in e["pk"]]
             setcols = [c for c, _, _ in e["fields"] if c not in e["pk"]]
@@ -248,6 +265,8 @@ def grid_row(key):
             ph = ",".join("?" for _ in cols)
             try:
                 db.execute(f"INSERT INTO {e['table']} ({','.join(cols)}) VALUES ({ph})", *vals)
+                if e["table"] == "company":
+                    load_lookups()  # header company selector caches at startup
                 if newpw:
                     flash(f"User {data.get('user_id')} created — initial password: {newpw} "
                           "(shown this once; hand it over securely).", "ok")
@@ -256,7 +275,7 @@ def grid_row(key):
             except Exception as ex:
                 flash("Could not add — " + (str(ex).split("\n")[0][:120]), "error")
         return redirect(url_for("screen", key=key, mode=request.args.get("mode", "PY"), company=company))
-    editing = any(("pk_" + c) in request.args for c in e["pk"])
+    editing = not e.get("add_only") and any(("pk_" + c) in request.args for c in e["pk"])
     f = {}
     if editing:
         where = " AND ".join(f"{c}=?" for c in e["pk"])
@@ -276,6 +295,10 @@ def grid_delete(key):
     if not g or not g.get("edit"):
         abort(404)
     e, company = g["edit"], sel_company()
+    if e.get("admin") and not is_admin():
+        abort(403)
+    if e.get("add_only"):
+        abort(403)
     where = " AND ".join(f"{c}=?" for c in e["pk"])
     wvals = [company if c == "company" else request.form.get("pk_" + c) for c in e["pk"]]
     me = session.get("user", {}).get("id", "")

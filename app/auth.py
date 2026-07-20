@@ -13,7 +13,8 @@ from db import one
 
 def verify(user_id: str, password: str):
     u = one(
-        "SELECT TRIM(user_id) AS user_id, COALESCE(user_name,'') AS user_name, password_hash "
+        "SELECT TRIM(user_id) AS user_id, COALESCE(user_name,'') AS user_name, "
+        "RTRIM(COALESCE(class,'')) AS cls, password_hash "
         "FROM users WHERE UPPER(TRIM(user_id)) = ?",
         user_id.strip().upper(),
     )

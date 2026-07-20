@@ -42,7 +42,7 @@ GRIDS = {
                  ("salarybase", "Salary Base", "n"), ("mcrer", "ER Share", "n"), ("mcree", "EE Share", "n")],
     },
     "company": {
-        "title": "Company Parameters", "subtitle": "company",
+        "title": "Company Parameters", "subtitle": "company — admins can add new companies",
         "sql": "SELECT RTRIM(company) AS company, RTRIM(companynam) AS companynam, RTRIM(COALESCE(address,'')) AS address, "
                "RTRIM(COALESCE(tin,'')) AS tin, RTRIM(COALESCE(sssno,'')) AS sssno, RTRIM(COALESCE(hdmfno,'')) AS hdmfno, "
                "RTRIM(COALESCE(phidno,'')) AS phidno, baseday, hourspday, maxdlyrate, maxmorate FROM company ORDER BY company",
@@ -357,6 +357,7 @@ GRIDS = {
 
 # ── editable reference tables: {grid key: {table, pk, fields[(col,label,type)]}} ──
 # type: text | num | int | date.  company-scoped grids inject company from the selector.
+# admin: True → only class-Q sign-ins may modify.  add_only: True → no edit/delete.
 EDITABLE = {
     "payitem": {"table": "payitem", "pk": ["company", "payitem"], "fields": [
         ("payitem", "Item code", "text"), ("descrip", "Description", "text"),
@@ -398,6 +399,15 @@ EDITABLE = {
     "tablecodes": {"table": "tablecode1", "pk": ["tblcode", "fldcode"], "fields": [
         ("tblcode", "Table code", "text"), ("fldcode", "Field code", "text"),
         ("descrip", "Description", "text"), ("vardata", "Value", "text"), ("applicat", "App", "text")]},
+    # company master: admins only, add-only — the code keys every other table, so
+    # renaming or deleting a company stays off the web app
+    "company": {"table": "company", "pk": ["company"], "admin": True, "add_only": True, "fields": [
+        ("company", "Code (3 chars)", "text"), ("companynam", "Company name", "text"),
+        ("address", "Address", "text"), ("tin", "TIN", "text"),
+        ("sssno", "SSS No", "text"), ("hdmfno", "HDMF No", "text"),
+        ("phidno", "PhilHealth No", "text"), ("baseday", "Base days / month", "num"),
+        ("hourspday", "Hours / day", "num"), ("maxdlyrate", "Max daily rate", "num"),
+        ("maxmorate", "Max monthly rate", "num")]},
     # staff sign-ins: global (no company), stamps change_date only; creating one seeds a
     # generated password (shown once in the flash) and rows get a reset-password action
     "users": {"table": "users", "pk": ["user_id"], "stamps": [("change_date", "now")], "fields": [
