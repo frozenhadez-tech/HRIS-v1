@@ -10,7 +10,7 @@ import datetime
 import os
 import secrets
 from functools import wraps
-from flask import (Flask, abort, flash, get_flashed_messages, redirect,
+from flask import (Flask, abort, flash, get_flashed_messages, jsonify, redirect,
                    render_template, request, session, url_for)
 
 import db
@@ -771,6 +771,24 @@ def _assignment_lookups(company):
     }
 
 
+def _next_emp_id() -> str:
+    """Next free badge: global numeric max + 1, zero-padded to 6 (legacy ###### format)."""
+    mx = one("SELECT MAX(CAST(RTRIM(emp_id) AS int)) AS mx FROM personnel "
+             "WHERE RTRIM(emp_id) ~ '^[0-9]+$'")["mx"] or 0
+    return str(mx + 1).zfill(6)
+
+
+@app.route("/employee/check_id")
+def employee_check_id():
+    """Live duplicate probe for the Add Employee form (same normalization as the save)."""
+    emp_id = (request.args.get("emp_id") or "").strip()
+    if emp_id.isdigit() and len(emp_id) <= 6:
+        emp_id = emp_id.zfill(6)
+    row = one("SELECT RTRIM(company) AS co FROM personnel WHERE RTRIM(emp_id)=?", emp_id) if emp_id else None
+    return jsonify({"used": bool(row), "company": (row or {}).get("co", ""),
+                    "next": _next_emp_id() if row else ""})
+
+
 @app.route("/employee/new", methods=["GET", "POST"])
 def employee_new():
     mode = request.args.get("mode", "PY")
@@ -782,10 +800,17 @@ def employee_new():
         errors = []
         if not emp_id:
             errors.append("Employee No. is required.")
+        elif emp_id.isdigit() and len(emp_id) <= 6:
+            emp_id = emp_id.zfill(6)  # '212' and '000212' are the same badge
+        else:
+            errors.append("Employee No. must be numeric, up to 6 digits.")
         if not (request.form.get("lastname") or "").strip():
             errors.append("Last name is required.")
-        if emp_id and one("SELECT 1 AS x FROM personnel WHERE company=? AND emp_id=?", company, emp_id):
-            errors.append(f"Employee {emp_id} already exists in company {company}.")
+        if emp_id and not errors:
+            dup = one("SELECT RTRIM(company) AS co FROM personnel WHERE RTRIM(emp_id)=?", emp_id)
+            if dup:
+                errors.append(f"Employee No. {emp_id} is already used in company {dup['co']} — "
+                              f"next free is {_next_emp_id()}.")
         errors += _length_errors(request.form)
         if not errors:
             cols, vals = ["company", "emp_id"], [company, emp_id]
@@ -794,12 +819,16 @@ def employee_new():
                 cols.append(f)
                 vals.append((v or None) if f in DATE_FIELDS else v)
             ph = ",".join("?" for _ in cols)
-            db.execute(f"INSERT INTO personnel ({','.join(cols)}) VALUES ({ph})", *vals)
-            flash(f"Employee {emp_id} added.", "ok")
-            return redirect(url_for("employee", company=company, emp_id=emp_id, mode=mode))
+            try:
+                db.execute(f"INSERT INTO personnel ({','.join(cols)}) VALUES ({ph})", *vals)
+                flash(f"Employee {emp_id} added.", "ok")
+                return redirect(url_for("employee", company=company, emp_id=emp_id, mode=mode))
+            except Exception:  # unique index caught a concurrent take of the same number
+                errors.append(f"Employee No. {emp_id} was just taken — next free is {_next_emp_id()}.")
         for e in errors:
             flash(e, "error")
-    return render_template("employee_new.html", est=est, form=request.form, is_edit=False,
+    form = request.form if request.form else {"emp_id": _next_emp_id()}
+    return render_template("employee_new.html", est=est, form=form, is_edit=False,
                            heading="Add Employee", action_url=url_for("employee_new", mode=mode),
                            **_emp_form_lookups(request.form.get("company") or sel_company()))
 

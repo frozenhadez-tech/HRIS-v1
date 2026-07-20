@@ -46,7 +46,27 @@
         <input type="text" value="{{ f.get('emp_id','') }}" readonly class="ro">
         <input type="hidden" name="emp_id" value="{{ f.get('emp_id','') }}">
         {% else %}
-        <input type="text" name="emp_id" value="{{ f.get('emp_id','') }}" required placeholder="e.g. 000500" spellcheck="false">
+        <input type="text" name="emp_id" value="{{ f.get('emp_id','') }}" required placeholder="e.g. 000500"
+               spellcheck="false" inputmode="numeric" pattern="[0-9]{1,6}"
+               title="Numeric, up to 6 digits — pre-filled with the next free number">
+        <span class="id-check" id="idcheck"></span>
+        <script>
+        (function () {
+          var inp = document.querySelector('input[name=emp_id]'), msg = document.getElementById('idcheck'), t;
+          function look() {
+            var v = inp.value.trim();
+            if (!v) { msg.textContent = ''; return; }
+            fetch('{{ url_for("employee_check_id") }}?emp_id=' + encodeURIComponent(v))
+              .then(function (r) { return r.json(); })
+              .then(function (d) {
+                if (d.used) { msg.textContent = '✕ already used in company ' + d.company + ' — next free is ' + d.next; msg.className = 'id-check bad'; }
+                else { msg.textContent = '✓ available'; msg.className = 'id-check good'; }
+              }).catch(function () { msg.textContent = ''; });
+          }
+          inp.addEventListener('input', function () { clearTimeout(t); t = setTimeout(look, 350); });
+          look();
+        })();
+        </script>
         {% endif %}
       </label>
     </div>
