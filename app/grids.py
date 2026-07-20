@@ -363,6 +363,7 @@ GRIDS = {
 # type: text | num | int | date.  company-scoped grids inject company from the selector.
 # admin: True → only class-Q sign-ins may modify.  add_only: True → no edit/delete.
 # opts: {col: [(value, label), …]} → the form renders a dropdown instead of a text box.
+# virtual: [cols] → shown on the form but not written as real columns (route handles them).
 EDITABLE = {
     "payitem": {"table": "payitem", "pk": ["company", "payitem"], "fields": [
         ("payitem", "Item code", "text"), ("descrip", "Description", "text"),
@@ -416,12 +417,16 @@ EDITABLE = {
     # staff sign-ins: global (no company), stamps change_date only; creating one seeds a
     # generated password (shown once in the flash) and rows get a reset-password action.
     # class S bypasses compusers; Q/U see only the companies ticked on the form.
+    # state is virtual: it drives the legacy `disabled` datetime (NULL=active) in the route
     "users": {"table": "users", "pk": ["user_id"], "stamps": [("change_date", "now")], "admin": True,
+              "virtual": ["state"],
               "opts": {"class": [("", "— select —"), ("S", "S — Super user (all companies)"),
-                                 ("Q", "Q — Administrator"), ("U", "U — Regular user")]},
+                                 ("Q", "Q — Administrator"), ("U", "U — Regular user")],
+                       "state": [("A", "Active"), ("D", "Disabled")]},
               "fields": [
         ("user_id", "User ID", "text"), ("user_name", "Full name", "text"),
-        ("class", "Class", "text"), ("emp_id", "Badge / Emp No", "text")]},
+        ("class", "Class", "text"), ("state", "State", "text"),
+        ("emp_id", "Badge / Emp No", "text")]},
 }
 for _k, _meta in EDITABLE.items():
     if _k in GRIDS:

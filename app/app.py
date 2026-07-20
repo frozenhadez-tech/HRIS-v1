@@ -91,12 +91,17 @@ def login():
         uid = (request.form.get("user_id") or "").strip().upper()
         pwd = request.form.get("password") or ""
         u = auth.verify(uid, pwd)
-        if u:
+        if u and u.get("disabled"):
+            error = "This account is disabled — contact an administrator."
+        elif u:
             session["user"] = {"id": u["user_id"], "name": u["user_name"],
                                "cls": (u.get("cls") or "").strip().upper()}
+            db.execute("UPDATE users SET lastsignon=? WHERE RTRIM(user_id)=?",
+                       datetime.datetime.now(), u["user_id"])
             dest = request.args.get("next") or url_for("dashboard")
             return redirect(dest)
-        error = "Invalid user ID or password."
+        else:
+            error = "Invalid user ID or password."
     return render_template("login.html", error=error)
 
 
@@ -270,6 +275,21 @@ def _save_user_grants(uid: str, by: str) -> None:
                    c, uid, by, datetime.datetime.now())
 
 
+def _set_user_state(uid: str) -> None:
+    """Apply the form's Active/Disabled choice to the legacy `disabled` stamp."""
+    st = (request.form.get("state") or "A").strip().upper()
+    if st == "D":
+        if uid == session.get("user", {}).get("id", ""):
+            flash("State kept Active — you can't disable your own account while signed in with it.",
+                  "error")
+            return
+        # keep the original stamp if the account was already disabled
+        db.execute("UPDATE users SET disabled=COALESCE(disabled, ?) WHERE RTRIM(user_id)=?",
+                   datetime.datetime.now(), uid)
+    else:
+        db.execute("UPDATE users SET disabled=NULL WHERE RTRIM(user_id)=?", uid)
+
+
 @app.route("/s/<key>/row", methods=["GET", "POST"])
 def grid_row(key):
     g = GRIDS.get(key)
@@ -282,6 +302,7 @@ def grid_row(key):
     user = session.get("user", {}).get("id", "")
     # stamp columns vary: legacy tables carry changeby/changedate, users only change_date
     stamps = e.get("stamps", [("changeby", "user"), ("changedate", "now")])
+    virt = set(e.get("virtual", ()))
     if request.method == "POST":
         data = {c: _cast(request.form.get(c), t) for c, _, t in e["fields"]}
         if e["table"] == "users" and data.get("user_id"):
@@ -292,15 +313,17 @@ def grid_row(key):
                 abort(403)
             where = " AND ".join(f"{c}=?" for c in e["pk"])
             wvals = [company if c == "company" else request.form.get("pk_" + c) for c in e["pk"]]
-            setcols = [c for c, _, _ in e["fields"] if c not in e["pk"]]
+            setcols = [c for c, _, _ in e["fields"] if c not in e["pk"] and c not in virt]
             sets = ", ".join(f"{c}=?" for c in setcols + [s for s, _ in stamps])
             svals = [data[c] for c in setcols] + svals_stamp
             db.execute(f"UPDATE {e['table']} SET {sets} WHERE {where}", *(svals + wvals))
             if e["table"] == "users":
-                _save_user_grants((request.form.get("pk_user_id") or "").strip().upper(), user)
+                uid = (request.form.get("pk_user_id") or "").strip().upper()
+                _save_user_grants(uid, user)
+                _set_user_state(uid)
             flash("Record updated.", "ok")
         else:
-            cols = [c for c, _, _ in e["fields"]]
+            cols = [c for c, _, _ in e["fields"] if c not in virt]
             vals = [data[c] for c in cols]
             if scoped and "company" not in cols:
                 cols, vals = ["company"] + cols, [company] + vals
@@ -319,6 +342,7 @@ def grid_row(key):
                 db.execute(f"INSERT INTO {e['table']} ({','.join(cols)}) VALUES ({ph})", *vals)
                 if e["table"] == "users":
                     _save_user_grants(data["user_id"], user)
+                    _set_user_state(data["user_id"])
                 if e["table"] == "company":
                     load_lookups()  # header company selector caches at startup
                     if not is_super():  # creator keeps access to the company they just made
@@ -342,6 +366,8 @@ def grid_row(key):
             for c, _, t in e["fields"]:
                 v = row.get(c)
                 f[c] = v.strftime("%Y-%m-%d") if (t == "date" and v) else ("" if v is None else (v.strip() if isinstance(v, str) else v))
+            if e["table"] == "users":  # virtual state ← legacy disabled stamp
+                f["state"] = "D" if row.get("disabled") else "A"
             f["_pk"] = {c: (company if c == "company" else request.args.get("pk_" + c)) for c in e["pk"]}
     grant_choices, grants = None, set()
     if e["table"] == "users":
